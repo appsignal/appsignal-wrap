@@ -166,6 +166,7 @@ async fn log_loop(
         if messages.len() >= 100 {
             let request = log.request(messages.drain(..).collect());
             tasks.spawn(send_request(request));
+            interval.reset();
         }
 
         select! {
