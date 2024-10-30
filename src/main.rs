@@ -4,7 +4,6 @@ mod log;
 
 mod client;
 mod timestamp;
-mod version;
 mod ndjson;
 mod hostname;
 
