@@ -20,7 +20,8 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio::select;
-use std::process::Stdio;
+use std::process::{exit, Stdio};
+use std::os::unix::process::ExitStatusExt;
 use std::io::{stdout, stderr, Write};
 use ::log::{error, debug, trace};
 use env_logger::Env;
@@ -35,7 +36,9 @@ fn main() {
 
     let cli = Cli::parse();
     match start(cli) {
-        Ok(_) => (),
+        Ok(code) => {
+            exit(code)
+        },
         Err(err) => error!("{}", err),
     }
 }
@@ -219,7 +222,7 @@ async fn log_loop(
 }
 
 #[tokio::main]
-async fn start(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     let cron = cli.cron();
     let log = cli.log();
 
@@ -274,5 +277,12 @@ async fn start(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     tasks.close();
     tasks.wait().await;
 
-    Ok(())
+    if let Some(code) = exit_status.code() {
+        Ok(code)
+    } else {
+        match exit_status.signal() {
+            Some(signal) => Ok(128 + signal),
+            None => Err("command exited without code or signal".into()),
+        }
+    }
 }
