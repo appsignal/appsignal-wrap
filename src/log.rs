@@ -1,22 +1,26 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 
-use crate::timestamp;
 use crate::client::client;
 use crate::ndjson;
+use crate::timestamp;
 
 pub struct LogConfig {
-  pub api_key: String,
-  pub endpoint: String,
-  pub hostname: String,
-  pub group: String,
-  pub origin: LogOrigin,
+    pub api_key: String,
+    pub endpoint: String,
+    pub hostname: String,
+    pub group: String,
+    pub origin: LogOrigin,
+    pub digest: String,
 }
 
 impl LogConfig {
     pub fn request(&self, messages: Vec<LogMessage>) -> Result<reqwest::Request, reqwest::Error> {
         let url = format!("{}/logs/json", self.endpoint);
 
-        client().post(url)
+        client()
+            .post(url)
             .query(&[("api_key", &self.api_key)])
             .header("Content-Type", "application/x-ndjson")
             .body(ndjson::to_string(messages).unwrap())
@@ -25,39 +29,39 @@ impl LogConfig {
 }
 
 pub enum LogOrigin {
-  None,
-  Stdout,
-  Stderr,
-  All,
+    None,
+    Stdout,
+    Stderr,
+    All,
 }
 
 impl LogOrigin {
-  pub fn from_args(no_log: bool, no_stdout: bool, no_stderr: bool) -> Self {
-      if no_log {
-          return Self::None;
-      }
+    pub fn from_args(no_log: bool, no_stdout: bool, no_stderr: bool) -> Self {
+        if no_log {
+            return Self::None;
+        }
 
-      match (no_stdout, no_stderr) {
-          (true, true) => Self::None,
-          (true, false) => Self::Stderr,
-          (false, true) => Self::Stdout,
-          (false, false) => Self::All,
-      }
-  }
+        match (no_stdout, no_stderr) {
+            (true, true) => Self::None,
+            (true, false) => Self::Stderr,
+            (false, true) => Self::Stdout,
+            (false, false) => Self::All,
+        }
+    }
 
-  pub fn is_out(&self) -> bool {
-      match self {
-          Self::Stdout | Self::All => true,
-          _ => false,
-      }
-  }
+    pub fn is_out(&self) -> bool {
+        match self {
+            Self::Stdout | Self::All => true,
+            _ => false,
+        }
+    }
 
-  pub fn is_err(&self) -> bool {
-      match self {
-          Self::Stderr | Self::All => true,
-          _ => false,
-      }
-  }
+    pub fn is_err(&self) -> bool {
+        match self {
+            Self::Stderr | Self::All => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -67,16 +71,22 @@ pub struct LogMessage {
     severity: LogSeverity,
     message: String,
     hostname: String,
+    attributes: HashMap<String, String>,
 }
 
 impl LogMessage {
     pub fn new(config: &LogConfig, severity: LogSeverity, message: String) -> Self {
+        let mut attributes = HashMap::new();
+
+        attributes.insert("appsignal-wrap-digest".to_string(), config.digest.clone());
+
         Self {
             group: config.group.clone(),
             timestamp: timestamp::as_rfc3339(),
             severity,
             message,
             hostname: config.hostname.clone(),
+            attributes,
         }
     }
 }
