@@ -6,26 +6,32 @@ mod client;
 mod timestamp;
 mod ndjson;
 mod hostname;
+mod signals;
 
 use crate::cli::Cli;
 use crate::check_in::{HeartbeatConfig, CronKind};
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::client::client;
+use crate::signals::{reset_sigpipe, signal_stream, has_terminating_intent};
 
 use tokio::io::{BufReader, AsyncBufReadExt, AsyncRead};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::process::Command;
+use tokio::process::{Command, Child};
+use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio::select;
-use std::process::{exit, Stdio};
+use std::process::{exit, Stdio, ExitStatus};
 use std::os::unix::process::ExitStatusExt;
-use std::io::{stdout, stderr, Write};
+use std::{io, io::{stdout, stderr, Write}};
 use ::log::{error, debug, trace};
+
 use env_logger::Env;
 
 fn main() {
+    reset_sigpipe();
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format(|buf, record| {
             let level = record.level().to_string().to_ascii_lowercase();
@@ -221,6 +227,35 @@ async fn log_loop(
     tasks.wait().await;
 }
 
+async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
+    use nix::sys::signal::kill;
+    use nix::unistd::Pid;
+
+    let mut signals = signal_stream()?;
+
+    loop {
+        select! {
+            biased;
+
+            status = child.wait() => {
+                return status
+            }
+
+            Some(signal) = signals.next() => {
+                if let Some(id) = child.id() {
+                    let pid = Pid::from_raw(id.try_into().expect("Invalid PID"));
+                    match kill(pid, signal) {
+                        Ok(_) => trace!("forwarded signal to child: {}", signal),
+                        Err(err) => debug!("error forwarding signal to child: {}", err),
+                    };
+                } else {
+                    debug!("cannot forward signal to child: child process has no PID");
+                }
+            }
+        }
+    }
+}
+
 #[tokio::main]
 async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     let cron = cli.cron();
@@ -258,7 +293,7 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
 
     tasks.spawn(log_loop(log, stdout, stderr));
 
-    let exit_status = child.wait().await?;
+    let exit_status = forward_signals_and_wait(child).await?;
 
     debug!("command exited with: {}", exit_status);
 
@@ -272,10 +307,44 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         heartbeat.cancel();
     }
 
-    debug!("waiting for {} tasks to complete", tasks.len());
-
     tasks.close();
-    tasks.wait().await;
+
+    if !tasks.is_empty() {
+        debug!("waiting for {} tasks to complete", tasks.len());
+
+        // Calling `forward_signals_and_wait` earlier set a signal handler for those signals,
+        // overriding their default behaviour, which is to cause the process to terminate.
+        // After `forward_signals_and_wait` finishes, those signal handlers are still set.
+        //
+        // While we wait for the tasks to complete, we need to continue to listen to those
+        // signal handlers.
+        //
+        // This allows for `appsignal-wrap` to be terminated by certain signals both before
+        // and after the child process' lifetime.
+        // 
+        // See https://docs.rs/tokio/latest/tokio/signal/unix/struct.Signal.html#caveats
+        // for reference. 
+        let mut signals = signal_stream()?;
+    
+        loop {
+            select! {
+                biased;
+    
+                _ = tasks.wait() => {
+                    break;
+                }
+    
+                Some(signal) = signals.next() => {
+                    if has_terminating_intent(&signal) {
+                        debug!("received terminating signal after child: {}", signal);
+                        return Ok(128 + signal as i32);
+                    } else {
+                        trace!("ignoring non-terminating signal after child: {}", signal);
+                    }
+                }
+            }
+        }
+    }
 
     if let Some(code) = exit_status.code() {
         Ok(code)
