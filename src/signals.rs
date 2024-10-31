@@ -1,20 +1,20 @@
-use tokio_stream::{Stream, StreamExt, StreamMap, wrappers::SignalStream};
+use nix::sys::signal::Signal;
 use std::io;
 use tokio::signal::unix::{signal, SignalKind};
-use nix::sys::signal::Signal;
+use tokio_stream::{wrappers::SignalStream, Stream, StreamExt, StreamMap};
 
 fn nix_to_tokio(signal: &Signal) -> SignalKind {
-  match signal {
-      Signal::SIGINT => SignalKind::interrupt(),
-      Signal::SIGTERM => SignalKind::terminate(),
-      Signal::SIGHUP => SignalKind::hangup(),
-      Signal::SIGQUIT => SignalKind::quit(),
-      Signal::SIGPIPE => SignalKind::pipe(),
-      Signal::SIGUSR1 => SignalKind::user_defined1(),
-      Signal::SIGUSR2 => SignalKind::user_defined2(),
-      Signal::SIGWINCH => SignalKind::window_change(),
-      _ => panic!("unsupported signal: {:?}", signal),
-  }
+    match signal {
+        Signal::SIGINT => SignalKind::interrupt(),
+        Signal::SIGTERM => SignalKind::terminate(),
+        Signal::SIGHUP => SignalKind::hangup(),
+        Signal::SIGQUIT => SignalKind::quit(),
+        Signal::SIGPIPE => SignalKind::pipe(),
+        Signal::SIGUSR1 => SignalKind::user_defined1(),
+        Signal::SIGUSR2 => SignalKind::user_defined2(),
+        Signal::SIGWINCH => SignalKind::window_change(),
+        _ => panic!("unsupported signal: {:?}", signal),
+    }
 }
 
 // This is a list of signals that are meaningful to forward to the child
@@ -26,14 +26,14 @@ fn nix_to_tokio(signal: &Signal) -> SignalKind {
 // application. Signals that cannot be caught, such as SIGKILL and SIGSTOP,
 // are not included.
 const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
-  Signal::SIGUSR1,
-  Signal::SIGUSR2,
-  Signal::SIGWINCH,
-  Signal::SIGINT,
-  Signal::SIGTERM,
-  Signal::SIGHUP,
-  Signal::SIGQUIT,
-  Signal::SIGPIPE,
+    Signal::SIGUSR1,
+    Signal::SIGUSR2,
+    Signal::SIGWINCH,
+    Signal::SIGINT,
+    Signal::SIGTERM,
+    Signal::SIGHUP,
+    Signal::SIGQUIT,
+    Signal::SIGPIPE,
 ];
 
 // Returns whether a signal returned by a `signal_stream` represents an intent
@@ -44,7 +44,7 @@ const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
 // This is a subset of the signals in `CHILD_FORWARDABLE_SIGNALS` for which the default
 // handling behaviour is to terminate the process, as described in:
 // https://man7.org/linux/man-pages/man7/signal.7.html
-// 
+//
 // As such, it excludes the following:
 // - `SIGUSR1` and `SIGUSR2`, which are used for custom communication with the process
 // - `SIGWINCH`, which notifies the process of a terminal resize (and whose default
@@ -55,25 +55,23 @@ const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
 // The objective is to ensure that only signals which were sent with the explicit
 // intent to terminate the child process cause this process to terminate.
 pub fn has_terminating_intent(signal: &Signal) -> bool {
-  match signal {
-      Signal::SIGINT |
-      Signal::SIGTERM |
-      Signal::SIGQUIT => true,
-      _ => false,
-  }
+    match signal {
+        Signal::SIGINT | Signal::SIGTERM | Signal::SIGQUIT => true,
+        _ => false,
+    }
 }
 
 pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
-  let mut signals = StreamMap::new();
+    let mut signals = StreamMap::new();
 
-  for nix_signal in &CHILD_FORWARDABLE_SIGNALS {
-      signals.insert(
-          nix_signal.clone(),
-          SignalStream::new(signal(nix_to_tokio(nix_signal))?)
-      );
-  }
+    for nix_signal in &CHILD_FORWARDABLE_SIGNALS {
+        signals.insert(
+            nix_signal.clone(),
+            SignalStream::new(signal(nix_to_tokio(nix_signal))?),
+        );
+    }
 
-  Ok(signals.map(|(signal, _)| signal))
+    Ok(signals.map(|(signal, _)| signal))
 }
 
 // This function resets the SIGPIPE signal to its default behavior.
@@ -87,7 +85,7 @@ pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
 // See https://github.com/kurtbuilds/sigpipe (and the discussions linked
 // in the README) for more information.
 pub fn reset_sigpipe() {
-  unsafe {
-      libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-  }
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
 }
