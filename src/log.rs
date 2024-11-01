@@ -109,7 +109,7 @@ pub enum LogSeverity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timestamp::tests::{TestTimestamp, EXPECTED_RFC3339};
+    use crate::timestamp::tests::{timestamp, EXPECTED_RFC3339};
 
     fn log_config() -> LogConfig {
         LogConfig {
@@ -127,13 +127,13 @@ mod tests {
         let config = log_config();
         let first_message = LogMessage::new(
             &config,
-            &mut TestTimestamp,
+            &mut timestamp(),
             LogSeverity::Info,
             "first-message".to_string(),
         );
         let second_message = LogMessage::new(
             &config,
-            &mut TestTimestamp,
+            &mut timestamp(),
             LogSeverity::Error,
             "second-message".to_string(),
         );
