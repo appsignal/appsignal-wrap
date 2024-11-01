@@ -1,5 +1,5 @@
 use crate::client::client;
-use crate::timestamp;
+use crate::timestamp::Timestamp;
 use reqwest::Request;
 use serde::Serialize;
 
@@ -21,19 +21,29 @@ struct CheckInQuery {
 }
 
 impl CheckInQuery {
-    pub fn from_cron(config: &CronConfig, kind: CronKind) -> Self {
-        Self::from_config(&config.check_in, Some(kind), Some(config.digest.clone()))
+    pub fn from_cron(config: &CronConfig, timestamp: &mut impl Timestamp, kind: CronKind) -> Self {
+        Self::from_config(
+            &config.check_in,
+            timestamp,
+            Some(kind),
+            Some(config.digest.clone()),
+        )
     }
 
-    pub fn from_heartbeat(config: &HeartbeatConfig) -> Self {
-        Self::from_config(&config.check_in, None, None)
+    pub fn from_heartbeat(config: &HeartbeatConfig, timestamp: &mut impl Timestamp) -> Self {
+        Self::from_config(&config.check_in, timestamp, None, None)
     }
 
-    fn from_config(config: &CheckInConfig, kind: Option<CronKind>, digest: Option<String>) -> Self {
+    fn from_config(
+        config: &CheckInConfig,
+        timestamp: &mut impl Timestamp,
+        kind: Option<CronKind>,
+        digest: Option<String>,
+    ) -> Self {
         Self {
             api_key: config.api_key.clone(),
             identifier: config.identifier.clone(),
-            timestamp: timestamp::as_secs(),
+            timestamp: timestamp.as_secs(),
             kind,
             digest,
         }
@@ -53,12 +63,16 @@ pub struct CronConfig {
 }
 
 impl CronConfig {
-    pub fn request(&self, kind: CronKind) -> Result<Request, reqwest::Error> {
+    pub fn request(
+        &self,
+        timestamp: &mut impl Timestamp,
+        kind: CronKind,
+    ) -> Result<Request, reqwest::Error> {
         let url = format!("{}/check_ins/cron", self.check_in.endpoint);
 
         client()
             .post(url)
-            .query(&CheckInQuery::from_cron(self, kind))
+            .query(&CheckInQuery::from_cron(self, timestamp, kind))
             .build()
     }
 }
@@ -68,12 +82,75 @@ pub struct HeartbeatConfig {
 }
 
 impl HeartbeatConfig {
-    pub fn request(&self) -> Result<Request, reqwest::Error> {
+    pub fn request(&self, timestamp: &mut impl Timestamp) -> Result<Request, reqwest::Error> {
         let url = format!("{}/check_ins/heartbeats", self.check_in.endpoint);
 
         client()
             .post(url)
-            .query(&CheckInQuery::from_heartbeat(self))
+            .query(&CheckInQuery::from_heartbeat(self, timestamp))
             .build()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::timestamp::tests::{TestTimestamp, EXPECTED_SECS};
+
+    fn check_in_config() -> CheckInConfig {
+        CheckInConfig {
+            api_key: "some_api_key".to_string(),
+            endpoint: "https://some-endpoint.com".to_string(),
+            identifier: "some-identifier".to_string(),
+        }
+    }
+
+    #[test]
+    fn cron_config_request() {
+        let config = CronConfig {
+            check_in: check_in_config(),
+            digest: "some-digest".to_string(),
+        };
+
+        let request = config.request(&mut TestTimestamp, CronKind::Start).unwrap();
+
+        assert_eq!(request.method().as_str(), "POST");
+        assert_eq!(
+            request.url().as_str(),
+            format!(
+                concat!(
+                    "https://some-endpoint.com/check_ins/cron",
+                    "?api_key=some_api_key",
+                    "&identifier=some-identifier",
+                    "&timestamp={}",
+                    "&kind=start",
+                    "&digest=some-digest"
+                ),
+                EXPECTED_SECS
+            )
+        );
+    }
+
+    #[test]
+    fn heartbeat_config_request() {
+        let config = HeartbeatConfig {
+            check_in: check_in_config(),
+        };
+
+        let request = config.request(&mut TestTimestamp).unwrap();
+
+        assert_eq!(request.method().as_str(), "POST");
+        assert_eq!(
+            request.url().as_str(),
+            format!(
+                concat!(
+                    "https://some-endpoint.com/check_ins/heartbeats",
+                    "?api_key=some_api_key",
+                    "&identifier=some-identifier",
+                    "&timestamp={}"
+                ),
+                EXPECTED_SECS
+            )
+        );
     }
 }

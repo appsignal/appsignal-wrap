@@ -4,7 +4,6 @@ mod log;
 
 mod client;
 mod exit;
-mod hostname;
 mod ndjson;
 mod signals;
 mod timestamp;
@@ -14,6 +13,7 @@ use crate::cli::Cli;
 use crate::client::client;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::signals::{has_terminating_intent, reset_sigpipe, signal_stream};
+use crate::timestamp::SystemTimestamp;
 
 use ::log::{debug, error, trace};
 use std::os::unix::process::ExitStatusExt;
@@ -31,6 +31,7 @@ use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use clap::Parser;
 use env_logger::Env;
 
 fn main() {
@@ -44,6 +45,8 @@ fn main() {
         .init();
 
     let cli = Cli::parse();
+    cli.warn();
+
     match start(cli) {
         Ok(code) => exit(code),
         Err(err) => error!("{}", err),
@@ -136,7 +139,7 @@ async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     // Ensure at least one heartbeat is sent.
-    send_request(config.request()).await;
+    send_request(config.request(&mut SystemTimestamp)).await;
     interval.tick().await;
 
     // After a heartbeat has been sent, cancel immediately on request, without
@@ -144,7 +147,7 @@ async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
     loop {
         select!(
             _ = cancel.cancelled() => break,
-            _ = interval.tick() => send_request(config.request()).await,
+            _ = interval.tick() => send_request(config.request(&mut SystemTimestamp)).await,
         );
     }
 }
@@ -188,7 +191,7 @@ async fn log_loop(
                         }
                     }
                     Some(line) => {
-                        messages.push(LogMessage::new(&log, LogSeverity::Info, line));
+                        messages.push(LogMessage::new(&log, &mut SystemTimestamp, LogSeverity::Info, line));
                     }
                 }
             }
@@ -202,7 +205,7 @@ async fn log_loop(
                         }
                     }
                     Some(line) => {
-                        messages.push(LogMessage::new(&log, LogSeverity::Error, line));
+                        messages.push(LogMessage::new(&log, &mut SystemTimestamp, LogSeverity::Error, line));
                     }
                 }
             }
@@ -286,7 +289,9 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     };
 
     if let Some(cron) = cron.as_ref() {
-        tasks.spawn(send_request(cron.request(CronKind::Start)));
+        tasks.spawn(send_request(
+            cron.request(&mut SystemTimestamp, CronKind::Start),
+        ));
     }
 
     let heartbeat = cli.heartbeat().map(|config| {
@@ -303,7 +308,9 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
 
     if exit_status.success() {
         if let Some(cron) = cron.as_ref() {
-            tasks.spawn(send_request(cron.request(CronKind::Finish)));
+            tasks.spawn(send_request(
+                cron.request(&mut SystemTimestamp, CronKind::Finish),
+            ));
         }
     }
 

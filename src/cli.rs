@@ -1,13 +1,10 @@
 use std::ffi::OsString;
 
 use crate::check_in::{CheckInConfig, CronConfig, HeartbeatConfig};
-use crate::hostname::hostname;
 use crate::log::{LogConfig, LogOrigin};
 
 use ::log::warn;
 use clap::Parser;
-use hex;
-use rand;
 
 /// a wrapper to track the execution of arbitrary processes with AppSignal
 ///
@@ -100,72 +97,109 @@ pub struct Cli {
     endpoint: String,
 
     /// The hostname to report when sending logs.
-    #[arg(long, env = "APPSIGNAL_HOSTNAME")]
-    hostname: Option<String>,
+    #[arg(
+        long,
+        env = "APPSIGNAL_HOSTNAME",
+        default_value = hostname(),
+    )]
+    hostname: String,
 
     /// The digest to uniquely identify this invocation of the process.
-    /// Used for cron check-ins and logs.
+    /// Used in cron check-ins as a digest, and in logs as an attribute.
     /// Unless overriden, this value is automatically set to a random value.
     #[arg(
       long,
       hide = true,
-      default_value = random_digest()
+      default_value = random_digest(),
+      hide_default_value = true
     )]
     digest: String,
 }
 
-fn random_digest() -> OsString {
-    // generate a random 8-byte hexadecimal digest
-    let digest = rand::random::<[u8; 8]>();
-    let digest = hex::encode(digest);
-    digest.into()
+pub fn hostname() -> String {
+    use nix::unistd::gethostname;
+
+    gethostname()
+        .ok()
+        .and_then(|hostname| OsString::into_string(hostname).ok())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn random_digest() -> String {
+    use hex::encode;
+    use rand::random;
+
+    encode(random::<[u8; 8]>())
 }
 
 impl Cli {
-    pub fn parse() -> Self {
-        let args: Self = match Parser::try_parse() {
-            Ok(args) => args,
-            Err(err) => {
-                eprintln!("appsignal-wrap: {}", err);
-                std::process::exit(2);
-            }
-        };
-
-        let using = if args.no_log {
+    fn log_and_no_log_warning(&self) -> Option<String> {
+        let using: Option<&str> = if self.no_log {
             Some("--no-log")
-        } else if args.no_stdout && args.no_stderr {
+        } else if self.no_stdout && self.no_stderr {
             Some("--no-stdout and --no-stderr")
         } else {
             None
         };
 
-        let alongside = if args.log.is_some() {
+        let alongside = if self.log.is_some() {
             Some("--log")
-        } else if args.log_source.is_some() {
+        } else if self.log_source.is_some() {
             Some("--log-source")
         } else {
             None
         };
 
-        if let (Some(using), Some(alongside)) = (using, alongside) {
-            warn!(
+        match (using, alongside) {
+            (Some(using), Some(alongside)) => Some(format!(
                 "using {using} alongside {alongside}; \
-              no logs will be sent to AppSignal"
-            );
+                no logs will be sent to AppSignal"
+            )),
+            _ => None,
         }
+    }
 
-        let no_checkins: bool = args.cron.is_none() && args.heartbeat.is_none();
+    fn no_log_and_no_checkins_warning(&self) -> Option<String> {
+        let no_checkins: bool = self.cron.is_none() && self.heartbeat.is_none();
 
         if no_checkins {
+            let using: Option<&str> = if self.no_log {
+                Some("--no-log")
+            } else if self.no_stdout && self.no_stderr {
+                Some("--no-stdout and --no-stderr")
+            } else {
+                None
+            };
+
             if let Some(using) = using {
-                warn!(
+                return Some(format!(
                     "using {using} without either --cron or --heartbeat; \
-                no data will be sent to AppSignal"
-                );
+                    no data will be sent to AppSignal"
+                ));
             }
         }
 
-        args
+        None
+    }
+
+    fn warnings(&self) -> Vec<String> {
+        let mut warnings = Vec::new();
+
+        if let Some(warning) = self.log_and_no_log_warning() {
+            warnings.push(warning);
+        }
+
+        if let Some(warning) = self.no_log_and_no_checkins_warning() {
+            warnings.push(warning);
+        }
+
+        warnings
+    }
+
+    pub fn warn(&self) -> () {
+        for warning in self.warnings() {
+            warn!("{}", warning);
+        }
     }
 
     pub fn cron(&self) -> Option<CronConfig> {
@@ -205,7 +239,7 @@ impl Cli {
         let endpoint = self.endpoint.clone();
         let origin = LogOrigin::from_args(self.no_log, self.no_stdout, self.no_stderr);
         let group = self.log.clone().unwrap_or_else(|| "process".to_string());
-        let hostname = self.hostname.clone().unwrap_or_else(hostname);
+        let hostname = self.hostname.clone();
         let digest: String = self.digest.clone();
 
         LogConfig {
@@ -215,6 +249,192 @@ impl Cli {
             hostname,
             group,
             digest,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // These arguments are required -- without them, the CLI parser will fail.
+    fn with_required_args(args: Vec<&str>) -> Vec<&str> {
+        let first_args: Vec<&str> = vec!["appsignal-wrap", "--api-key", "some-api-key"];
+        let last_args: Vec<&str> = vec!["--", "true"];
+        first_args
+            .into_iter()
+            .chain(args)
+            .chain(last_args)
+            .collect()
+    }
+
+    #[test]
+    fn random_digest() {
+        let digest = super::random_digest();
+        assert!(digest.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(digest.len(), 16);
+    }
+
+    #[test]
+    fn cli_no_warnings() {
+        let cli =
+            Cli::try_parse_from(with_required_args(vec![])).expect("failed to parse CLI arguments");
+
+        let warnings = cli.warnings();
+
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn cli_warnings_log_and_no_log() {
+        for (args, warning) in vec![
+            (
+                vec!["--log", "some-group", "--no-log"],
+                "using --no-log alongside --log; no logs will be sent to AppSignal"
+            ),
+            (
+                vec!["--log-source", "some-log-source", "--no-log"],
+                "using --no-log alongside --log-source; no logs will be sent to AppSignal"
+            ),
+            (
+                vec!["--log", "some-group", "--no-stdout", "--no-stderr"],
+                "using --no-stdout and --no-stderr alongside --log; no logs will be sent to AppSignal"
+            ),
+            (
+                vec!["--log-source", "some-log-source", "--no-stdout", "--no-stderr"],
+                "using --no-stdout and --no-stderr alongside --log-source; no logs will be sent to AppSignal"
+            ),
+        ] {
+            let cli = Cli::try_parse_from(
+                with_required_args(args)
+            ).expect("failed to parse CLI arguments");
+
+            let warnings = cli.warnings();
+
+            assert!(!warnings.is_empty());
+            assert!(
+                warnings.contains(&warning.to_string()),
+                "actual: {warnings:?}, expected to contain: {warning:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_warnings_no_log_and_no_checkins() {
+        for (args, warning) in vec![
+            (
+                vec!["--no-log"],
+                "using --no-log without either --cron or --heartbeat; no data will be sent to AppSignal"
+            ),
+            (
+                vec!["--no-stdout", "--no-stderr"],
+                "using --no-stdout and --no-stderr without either --cron or --heartbeat; no data will be sent to AppSignal"
+            ),
+        ] {
+            let cli = Cli::try_parse_from(
+                with_required_args(args)
+
+            ).expect("failed to parse CLI arguments");
+
+            let warnings = cli.warnings();
+
+            assert_eq!(warnings.len(), 1);
+            assert_eq!(warnings[0], warning);
+        }
+    }
+
+    #[test]
+    fn cli_log_config() {
+        let cli = Cli::try_parse_from(with_required_args(vec![
+            "--log",
+            "some-group",
+            "--hostname",
+            "some-hostname",
+            "--digest",
+            "some-digest",
+        ]))
+        .expect("failed to parse CLI arguments");
+
+        let log_config = cli.log();
+
+        assert_eq!(log_config.api_key, "some-api-key");
+        assert_eq!(log_config.endpoint, "https://appsignal-endpoint.net");
+        assert_eq!(log_config.origin, LogOrigin::All);
+        assert_eq!(log_config.group, "some-group");
+        assert_eq!(log_config.hostname, "some-hostname");
+        assert_eq!(log_config.digest, "some-digest");
+    }
+
+    #[test]
+    fn cli_log_config_no_log_options() {
+        for (args, origin) in vec![
+            (vec!["--no-log"], LogOrigin::None),
+            (vec!["--no-stdout", "--no-stderr"], LogOrigin::None),
+            (vec!["--no-stdout"], LogOrigin::Stderr),
+            (vec!["--no-stderr"], LogOrigin::Stdout),
+        ] {
+            let cli = Cli::try_parse_from(with_required_args(args))
+                .expect("failed to parse CLI arguments");
+
+            let log_config = cli.log();
+
+            assert_eq!(log_config.origin, origin);
+        }
+    }
+
+    #[test]
+    fn cli_check_in_config() {
+        for (args, cron, heartbeat) in vec![
+            (
+                vec![
+                    "--cron",
+                    "some-cron",
+                    "--digest",
+                    "some-digest",
+                    "--heartbeat",
+                    "some-heartbeat",
+                ],
+                true,
+                true,
+            ),
+            (
+                vec!["--cron", "some-cron", "--digest", "some-digest"],
+                true,
+                false,
+            ),
+            (vec!["--heartbeat", "some-heartbeat"], false, true),
+            (vec![], false, false),
+        ] {
+            let cli = Cli::try_parse_from(with_required_args(args))
+                .expect("failed to parse CLI arguments");
+
+            let cron_config = cli.cron();
+            let heartbeat_config = cli.heartbeat();
+
+            if cron {
+                let cron_config = cron_config.expect("expected cron config");
+                assert_eq!(cron_config.check_in.identifier, "some-cron");
+                assert_eq!(cron_config.check_in.api_key, "some-api-key");
+                assert_eq!(
+                    cron_config.check_in.endpoint,
+                    "https://appsignal-endpoint.net"
+                );
+                assert_eq!(cron_config.digest, "some-digest");
+            } else {
+                assert!(cron_config.is_none());
+            }
+
+            if heartbeat {
+                let heartbeat_config = heartbeat_config.expect("expected heartbeat config");
+                assert_eq!(heartbeat_config.check_in.identifier, "some-heartbeat");
+                assert_eq!(heartbeat_config.check_in.api_key, "some-api-key");
+                assert_eq!(
+                    heartbeat_config.check_in.endpoint,
+                    "https://appsignal-endpoint.net"
+                );
+            } else {
+                assert!(heartbeat_config.is_none());
+            }
         }
     }
 }

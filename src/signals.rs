@@ -49,7 +49,7 @@ const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
 // - `SIGUSR1` and `SIGUSR2`, which are used for custom communication with the process
 // - `SIGWINCH`, which notifies the process of a terminal resize (and whose default
 //   behaviour is to be ignored)
-// - `SIGHUP`, which is used to trigger configuration refreshes
+// - `SIGHUP`, which is sometimes used to trigger configuration refreshes
 // - `SIGPIPE`, which notifies the process of a broken pipe
 //
 // The objective is to ensure that only signals which were sent with the explicit
@@ -75,7 +75,7 @@ pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
 }
 
 // This function resets the SIGPIPE signal to its default behavior.
-// It is called at the beginning of the problem.
+// It is called at the beginning of the program.
 //
 // Signal handlers are inherited by child processes, and most software
 // expects SIGPIPE to be set to its default behavior. However,
