@@ -5,17 +5,17 @@ mod log;
 mod client;
 mod exit;
 mod ndjson;
+mod package;
 mod signals;
 mod timestamp;
-mod package;
 
 use crate::check_in::{CronKind, HeartbeatConfig};
 use crate::cli::Cli;
 use crate::client::client;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
+use crate::package::NAME;
 use crate::signals::{has_terminating_intent, reset_sigpipe, signal_stream};
 use crate::timestamp::SystemTimestamp;
-use crate::package::NAME;
 
 use ::log::{debug, error, trace};
 use std::os::unix::process::ExitStatusExt;
@@ -56,7 +56,7 @@ fn main() {
     }
 }
 
-fn command(argv: &Vec<String>, log: &LogConfig) -> Command {
+fn command(argv: &[String], log: &LogConfig) -> Command {
     let mut command = Command::new(argv[0].clone());
     for arg in argv[1..].iter() {
         command.arg(arg);
@@ -114,7 +114,7 @@ async fn pipe_lines(
     }
 }
 
-async fn send_request(request: Result<reqwest::Request, reqwest::Error>) -> () {
+async fn send_request(request: Result<reqwest::Request, reqwest::Error>) {
     let request = match request {
         Ok(request) => request,
         Err(err) => {
@@ -181,7 +181,7 @@ async fn log_loop(
 
     loop {
         if messages.len() >= 100 {
-            let request = log.request(messages.drain(..).collect());
+            let request = log.request(std::mem::take(&mut messages));
             tasks.spawn(send_request(request));
             interval.reset();
         }
@@ -220,8 +220,8 @@ async fn log_loop(
                     break;
                 }
 
-                if messages.len() > 0 {
-                    let request = log.request(messages.drain(..).collect());
+                if !messages.is_empty() {
+                    let request = log.request(std::mem::take(&mut messages));
                     tasks.spawn(send_request(request));
                 }
             }
@@ -230,7 +230,7 @@ async fn log_loop(
         }
     }
 
-    if messages.len() > 0 {
+    if !messages.is_empty() {
         let request = log.request(messages);
         tasks.spawn(send_request(request));
     }
