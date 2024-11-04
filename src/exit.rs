@@ -2,7 +2,7 @@
 // See: https://gitlab.com/nbdkit/nbdkit/-/blob/master/common/utils/exit-with-parent.c
 
 #[cfg(target_os = "linux")]
-fn set_exit_with_parent() -> () {
+fn set_exit_with_parent() {
     use libc::{c_int, c_long, SIGTERM};
 
     extern "C" {
@@ -17,7 +17,7 @@ fn set_exit_with_parent() -> () {
 }
 
 #[cfg(target_os = "macos")]
-fn set_exit_with_parent() -> () {
+fn set_exit_with_parent() {
     // macOS does not have the `prctl` function, so we do nothing.
     // This means that the child process will not be terminated when
     // the parent process exits.

@@ -4,8 +4,8 @@ use serde::Serialize;
 
 use crate::client::client;
 use crate::ndjson;
-use crate::timestamp::Timestamp;
 use crate::package::NAME;
+use crate::timestamp::Timestamp;
 
 pub struct LogConfig {
     pub api_key: String,
@@ -52,17 +52,11 @@ impl LogOrigin {
     }
 
     pub fn is_out(&self) -> bool {
-        match self {
-            Self::Stdout | Self::All => true,
-            _ => false,
-        }
+        matches!(self, Self::Stdout | Self::All)
     }
 
     pub fn is_err(&self) -> bool {
-        match self {
-            Self::Stderr | Self::All => true,
-            _ => false,
-        }
+        matches!(self, Self::Stderr | Self::All)
     }
 }
 

@@ -55,10 +55,7 @@ const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
 // The objective is to ensure that only signals which were sent with the explicit
 // intent to terminate the child process cause this process to terminate.
 pub fn has_terminating_intent(signal: &Signal) -> bool {
-    match signal {
-        Signal::SIGINT | Signal::SIGTERM | Signal::SIGQUIT => true,
-        _ => false,
-    }
+    matches!(signal, Signal::SIGINT | Signal::SIGTERM | Signal::SIGQUIT)
 }
 
 pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
@@ -66,7 +63,7 @@ pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
 
     for nix_signal in &CHILD_FORWARDABLE_SIGNALS {
         signals.insert(
-            nix_signal.clone(),
+            *nix_signal,
             SignalStream::new(signal(nix_to_tokio(nix_signal))?),
         );
     }

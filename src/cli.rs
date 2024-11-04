@@ -196,7 +196,7 @@ impl Cli {
         warnings
     }
 
-    pub fn warn(&self) -> () {
+    pub fn warn(&self) {
         for warning in self.warnings() {
             warn!("{}", warning);
         }
@@ -288,8 +288,7 @@ mod tests {
 
     #[test]
     fn cli_warnings_log_and_no_log() {
-        for (args, warning) in vec![
-            (
+        for (args, warning) in [(
                 vec!["--log", "some-group", "--no-log"],
                 "using --no-log alongside --log; no logs will be sent to AppSignal"
             ),
@@ -304,8 +303,7 @@ mod tests {
             (
                 vec!["--log-source", "some-log-source", "--no-stdout", "--no-stderr"],
                 "using --no-stdout and --no-stderr alongside --log-source; no logs will be sent to AppSignal"
-            ),
-        ] {
+            )] {
             let cli = Cli::try_parse_from(
                 with_required_args(args)
             ).expect("failed to parse CLI arguments");
@@ -322,16 +320,14 @@ mod tests {
 
     #[test]
     fn cli_warnings_no_log_and_no_checkins() {
-        for (args, warning) in vec![
-            (
+        for (args, warning) in [(
                 vec!["--no-log"],
                 "using --no-log without either --cron or --heartbeat; no data will be sent to AppSignal"
             ),
             (
                 vec!["--no-stdout", "--no-stderr"],
                 "using --no-stdout and --no-stderr without either --cron or --heartbeat; no data will be sent to AppSignal"
-            ),
-        ] {
+            )] {
             let cli = Cli::try_parse_from(
                 with_required_args(args)
 
@@ -368,7 +364,7 @@ mod tests {
 
     #[test]
     fn cli_log_config_no_log_options() {
-        for (args, origin) in vec![
+        for (args, origin) in [
             (vec!["--no-log"], LogOrigin::None),
             (vec!["--no-stdout", "--no-stderr"], LogOrigin::None),
             (vec!["--no-stdout"], LogOrigin::Stderr),
@@ -385,7 +381,7 @@ mod tests {
 
     #[test]
     fn cli_check_in_config() {
-        for (args, cron, heartbeat) in vec![
+        for (args, cron, heartbeat) in [
             (
                 vec![
                     "--cron",
