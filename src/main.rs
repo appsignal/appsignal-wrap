@@ -1,31 +1,35 @@
-mod cli;
 mod check_in;
+mod cli;
 mod log;
 
 mod client;
-mod timestamp;
-mod ndjson;
+mod exit;
 mod hostname;
+mod ndjson;
 mod signals;
+mod timestamp;
 
+use crate::check_in::{CronKind, HeartbeatConfig};
 use crate::cli::Cli;
-use crate::check_in::{HeartbeatConfig, CronKind};
-use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::client::client;
-use crate::signals::{reset_sigpipe, signal_stream, has_terminating_intent};
+use crate::log::{LogConfig, LogMessage, LogSeverity};
+use crate::signals::{has_terminating_intent, reset_sigpipe, signal_stream};
 
-use tokio::io::{BufReader, AsyncBufReadExt, AsyncRead};
+use ::log::{debug, error, trace};
+use std::os::unix::process::ExitStatusExt;
+use std::process::{exit, ExitStatus, Stdio};
+use std::{
+    io,
+    io::{stderr, stdout, Write},
+};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
+use tokio::process::{Child, Command};
+use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::process::{Command, Child};
+use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
-use tokio::time::{interval, Duration, MissedTickBehavior};
-use tokio::select;
-use std::process::{exit, Stdio, ExitStatus};
-use std::os::unix::process::ExitStatusExt;
-use std::{io, io::{stdout, stderr, Write}};
-use ::log::{error, debug, trace};
 
 use env_logger::Env;
 
@@ -41,9 +45,7 @@ fn main() {
 
     let cli = Cli::parse();
     match start(cli) {
-        Ok(code) => {
-            exit(code)
-        },
+        Ok(code) => exit(code),
         Err(err) => error!("{}", err),
     }
 }
@@ -62,6 +64,10 @@ fn command(argv: &Vec<String>, log: &LogConfig) -> Command {
         command.stderr(Stdio::piped());
     }
 
+    unsafe {
+        command.pre_exec(exit::exit_with_parent);
+    }
+
     command
 }
 
@@ -72,7 +78,7 @@ fn command(argv: &Vec<String>, log: &LogConfig) -> Command {
 async fn pipe_lines(
     from: impl AsyncRead + Unpin + Send + 'static,
     mut to: impl Write + Send + 'static,
-    sender: UnboundedSender<Option<String>>
+    sender: UnboundedSender<Option<String>>,
 ) {
     let mut from = BufReader::new(from).lines();
 
@@ -123,8 +129,6 @@ async fn send_request(request: Result<reqwest::Request, reqwest::Error>) -> () {
             debug!("error sending request: {:?}", err);
         }
     };
-
-    ()
 }
 
 async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
@@ -321,19 +325,19 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         //
         // This allows for `appsignal-wrap` to be terminated by certain signals both before
         // and after the child process' lifetime.
-        // 
+        //
         // See https://docs.rs/tokio/latest/tokio/signal/unix/struct.Signal.html#caveats
-        // for reference. 
+        // for reference.
         let mut signals = signal_stream()?;
-    
+
         loop {
             select! {
                 biased;
-    
+
                 _ = tasks.wait() => {
                     break;
                 }
-    
+
                 Some(signal) = signals.next() => {
                     if has_terminating_intent(&signal) {
                         debug!("received terminating signal after child: {}", signal);
