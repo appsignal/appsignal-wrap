@@ -4,16 +4,18 @@ mod log;
 
 mod client;
 mod exit;
-mod hostname;
 mod ndjson;
 mod signals;
 mod timestamp;
+mod package;
 
 use crate::check_in::{CronKind, HeartbeatConfig};
 use crate::cli::Cli;
 use crate::client::client;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::signals::{has_terminating_intent, reset_sigpipe, signal_stream};
+use crate::timestamp::SystemTimestamp;
+use crate::package::NAME;
 
 use ::log::{debug, error, trace};
 use std::os::unix::process::ExitStatusExt;
@@ -31,6 +33,7 @@ use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use clap::Parser;
 use env_logger::Env;
 
 fn main() {
@@ -39,11 +42,13 @@ fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format(|buf, record| {
             let level = record.level().to_string().to_ascii_lowercase();
-            writeln!(buf, "appsignal-wrap: {}: {}", level, record.args())
+            writeln!(buf, "{}: {}: {}", NAME, level, record.args())
         })
         .init();
 
     let cli = Cli::parse();
+    cli.warn();
+
     match start(cli) {
         Ok(code) => exit(code),
         Err(err) => error!("{}", err),
@@ -136,7 +141,7 @@ async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
     interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
     // Ensure at least one heartbeat is sent.
-    send_request(config.request()).await;
+    send_request(config.request(&mut SystemTimestamp)).await;
     interval.tick().await;
 
     // After a heartbeat has been sent, cancel immediately on request, without
@@ -144,7 +149,7 @@ async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
     loop {
         select!(
             _ = cancel.cancelled() => break,
-            _ = interval.tick() => send_request(config.request()).await,
+            _ = interval.tick() => send_request(config.request(&mut SystemTimestamp)).await,
         );
     }
 }
@@ -188,7 +193,7 @@ async fn log_loop(
                         }
                     }
                     Some(line) => {
-                        messages.push(LogMessage::new(&log, LogSeverity::Info, line));
+                        messages.push(LogMessage::new(&log, &mut SystemTimestamp, LogSeverity::Info, line));
                     }
                 }
             }
@@ -202,7 +207,7 @@ async fn log_loop(
                         }
                     }
                     Some(line) => {
-                        messages.push(LogMessage::new(&log, LogSeverity::Error, line));
+                        messages.push(LogMessage::new(&log, &mut SystemTimestamp, LogSeverity::Error, line));
                     }
                 }
             }
@@ -286,7 +291,9 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     };
 
     if let Some(cron) = cron.as_ref() {
-        tasks.spawn(send_request(cron.request(CronKind::Start)));
+        tasks.spawn(send_request(
+            cron.request(&mut SystemTimestamp, CronKind::Start),
+        ));
     }
 
     let heartbeat = cli.heartbeat().map(|config| {
@@ -303,7 +310,9 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
 
     if exit_status.success() {
         if let Some(cron) = cron.as_ref() {
-            tasks.spawn(send_request(cron.request(CronKind::Finish)));
+            tasks.spawn(send_request(
+                cron.request(&mut SystemTimestamp, CronKind::Finish),
+            ));
         }
     }
 
@@ -323,7 +332,7 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         // While we wait for the tasks to complete, we need to continue to listen to those
         // signal handlers.
         //
-        // This allows for `appsignal-wrap` to be terminated by certain signals both before
+        // This allows for the wrapper process to be terminated by certain signals both before
         // and after the child process' lifetime.
         //
         // See https://docs.rs/tokio/latest/tokio/signal/unix/struct.Signal.html#caveats
