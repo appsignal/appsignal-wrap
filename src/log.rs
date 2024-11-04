@@ -5,6 +5,7 @@ use serde::Serialize;
 use crate::client::client;
 use crate::ndjson;
 use crate::timestamp::Timestamp;
+use crate::package::NAME;
 
 pub struct LogConfig {
     pub api_key: String,
@@ -85,7 +86,7 @@ impl LogMessage {
     ) -> Self {
         let mut attributes = HashMap::new();
 
-        attributes.insert("appsignal-wrap-digest".to_string(), config.digest.clone());
+        attributes.insert(format!("{}-digest", NAME), config.digest.clone());
 
         Self {
             group: config.group.clone(),
@@ -149,30 +150,27 @@ mod tests {
             "application/x-ndjson"
         );
         assert_eq!(
-            request.body().unwrap().as_bytes(),
-            Some(
-                format!(
-                    concat!(
-                        "{{",
-                        r#""group":"some-group","#,
-                        r#""timestamp":"{}","#,
-                        r#""severity":"info","#,
-                        r#""message":"first-message","#,
-                        r#""hostname":"some-hostname","#,
-                        r#""attributes":{{"digest":"some-digest"}}"#,
-                        "}}\n",
-                        "{{",
-                        r#""group":"some-group","#,
-                        r#""timestamp":"{}","#,
-                        r#""severity":"error","#,
-                        r#""message":"second-message","#,
-                        r#""hostname":"some-hostname","#,
-                        r#""attributes":{{"digest":"some-digest"}}"#,
-                        "}}\n"
-                    ),
-                    EXPECTED_RFC3339, EXPECTED_RFC3339
-                )
-                .as_bytes()
+            String::from_utf8_lossy(request.body().unwrap().as_bytes().unwrap()),
+            format!(
+                concat!(
+                    "{{",
+                    r#""group":"some-group","#,
+                    r#""timestamp":"{}","#,
+                    r#""severity":"info","#,
+                    r#""message":"first-message","#,
+                    r#""hostname":"some-hostname","#,
+                    r#""attributes":{{"{}-digest":"some-digest"}}"#,
+                    "}}\n",
+                    "{{",
+                    r#""group":"some-group","#,
+                    r#""timestamp":"{}","#,
+                    r#""severity":"error","#,
+                    r#""message":"second-message","#,
+                    r#""hostname":"some-hostname","#,
+                    r#""attributes":{{"{}-digest":"some-digest"}}"#,
+                    "}}\n"
+                ),
+                EXPECTED_RFC3339, NAME, EXPECTED_RFC3339, NAME
             )
         );
     }

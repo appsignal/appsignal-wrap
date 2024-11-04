@@ -7,6 +7,7 @@ mod exit;
 mod ndjson;
 mod signals;
 mod timestamp;
+mod package;
 
 use crate::check_in::{CronKind, HeartbeatConfig};
 use crate::cli::Cli;
@@ -14,6 +15,7 @@ use crate::client::client;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::signals::{has_terminating_intent, reset_sigpipe, signal_stream};
 use crate::timestamp::SystemTimestamp;
+use crate::package::NAME;
 
 use ::log::{debug, error, trace};
 use std::os::unix::process::ExitStatusExt;
@@ -40,7 +42,7 @@ fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format(|buf, record| {
             let level = record.level().to_string().to_ascii_lowercase();
-            writeln!(buf, "appsignal-wrap: {}: {}", level, record.args())
+            writeln!(buf, "{}: {}: {}", NAME, level, record.args())
         })
         .init();
 
@@ -330,7 +332,7 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         // While we wait for the tasks to complete, we need to continue to listen to those
         // signal handlers.
         //
-        // This allows for `appsignal-wrap` to be terminated by certain signals both before
+        // This allows for the wrapper process to be terminated by certain signals both before
         // and after the child process' lifetime.
         //
         // See https://docs.rs/tokio/latest/tokio/signal/unix/struct.Signal.html#caveats

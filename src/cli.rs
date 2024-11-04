@@ -256,10 +256,11 @@ impl Cli {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::package::NAME;
 
     // These arguments are required -- without them, the CLI parser will fail.
     fn with_required_args(args: Vec<&str>) -> Vec<&str> {
-        let first_args: Vec<&str> = vec!["appsignal-wrap", "--api-key", "some-api-key"];
+        let first_args: Vec<&str> = vec![NAME, "--api-key", "some-api-key"];
         let last_args: Vec<&str> = vec!["--", "true"];
         first_args
             .into_iter()
