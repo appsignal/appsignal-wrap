@@ -24,6 +24,7 @@ use std::{
     io,
     io::{stderr, stdout, Write},
 };
+use timestamp::MonotonicTimestamp;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::{Child, Command};
 use tokio::select;
@@ -166,6 +167,8 @@ async fn log_loop(
     mut stdout: Option<UnboundedReceiver<Option<String>>>,
     mut stderr: Option<UnboundedReceiver<Option<String>>>,
 ) {
+    let mut timestamp = MonotonicTimestamp::new(SystemTimestamp);
+
     if stdout.is_none() && stderr.is_none() {
         return;
     }
@@ -193,7 +196,7 @@ async fn log_loop(
                         }
                     }
                     Some(line) => {
-                        messages.push(LogMessage::new(&log, &mut SystemTimestamp, LogSeverity::Info, line));
+                        messages.push(LogMessage::new(&log, &mut timestamp, LogSeverity::Info, line));
                     }
                 }
             }
@@ -207,7 +210,7 @@ async fn log_loop(
                         }
                     }
                     Some(line) => {
-                        messages.push(LogMessage::new(&log, &mut SystemTimestamp, LogSeverity::Error, line));
+                        messages.push(LogMessage::new(&log, &mut timestamp, LogSeverity::Error, line));
                     }
                 }
             }

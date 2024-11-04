@@ -95,7 +95,7 @@ impl HeartbeatConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timestamp::tests::{TestTimestamp, EXPECTED_SECS};
+    use crate::timestamp::tests::{timestamp, EXPECTED_SECS};
 
     fn check_in_config() -> CheckInConfig {
         CheckInConfig {
@@ -112,7 +112,7 @@ mod tests {
             digest: "some-digest".to_string(),
         };
 
-        let request = config.request(&mut TestTimestamp, CronKind::Start).unwrap();
+        let request = config.request(&mut timestamp(), CronKind::Start).unwrap();
 
         assert_eq!(request.method().as_str(), "POST");
         assert_eq!(
@@ -137,7 +137,7 @@ mod tests {
             check_in: check_in_config(),
         };
 
-        let request = config.request(&mut TestTimestamp).unwrap();
+        let request = config.request(&mut timestamp()).unwrap();
 
         assert_eq!(request.method().as_str(), "POST");
         assert_eq!(
