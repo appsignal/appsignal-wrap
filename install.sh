@@ -43,6 +43,11 @@ if [ "$ARCH" = "arm64" ]; then
   ARCH="aarch64"
 fi
 
+# Rename "aarch64" to "arm64" for the user-friendly architecture name.
+if [ "$ARCH" = "aarch64" ]; then
+  ARCH_FRIENDLY="arm64"
+fi
+
 EXTRA=""
 EXTRA_FRIENDLY=""
 
