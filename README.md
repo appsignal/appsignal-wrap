@@ -8,7 +8,7 @@
 
 ## Usage
 
-To use `appsignal-wrap`, you must provide an app-level API key. You can find the API key for your application under ...
+To use `appsignal-wrap`, you must provide an app-level API key. You can find the API key for your application in the [push and deploy settings](https://appsignal.com/redirect-to/app?to=api_keys) for your application.
 
 To provide the app-level API key, set it as the value for the `APPSIGNAL_APP_PUSH_API_KEY` environment variable, or pass it as the value for the `--api-key` command-line option.
 
