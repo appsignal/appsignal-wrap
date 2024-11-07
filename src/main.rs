@@ -14,7 +14,7 @@ use crate::cli::Cli;
 use crate::client::client;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::package::NAME;
-use crate::signals::{has_terminating_intent, reset_sigpipe, signal_stream};
+use crate::signals::{has_terminating_intent, signal_stream};
 use crate::timestamp::SystemTimestamp;
 
 use ::log::{debug, error, trace};
@@ -38,8 +38,6 @@ use clap::Parser;
 use env_logger::Env;
 
 fn main() {
-    reset_sigpipe();
-
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .format(|buf, record| {
             let level = record.level().to_string().to_ascii_lowercase();
