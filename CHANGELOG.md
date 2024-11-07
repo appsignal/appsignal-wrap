@@ -1,0 +1,2 @@
+# `appsignal-wrap` changelog
+
