@@ -8,11 +8,15 @@
 
 ## Usage
 
-To use `appsignal-wrap`, you must provide an app-level API key. You can find the API key for your application in the [push and deploy settings](https://appsignal.com/redirect-to/app?to=api_keys) for your application.
+```
+appsignal-wrap [OPTIONS] -- COMMAND
+```
+
+To use `appsignal-wrap`, you must provide an app-level API key. You can find the app-level API key in the [push and deploy settings](https://appsignal.com/redirect-to/app?to=api_keys) for your application.
 
 To provide the app-level API key, set it as the value for the `APPSIGNAL_APP_PUSH_API_KEY` environment variable, or pass it as the value for the `--api-key` command-line option.
 
-You must also provide a command to execute. This is the command whose output and lifecycle will be monitored with AppSignal.
+You must also provide a command to execute, as the last argument, preceded by `--`. This is the command whose output and lifecycle will be monitored with AppSignal.
 
 ## Examples
 
@@ -30,7 +34,7 @@ appsignal-wrap --heartbeat database -- mysqld
 
 This invocation can then be added to the `mysql.service` service definition:
 
-```conf
+```sh
 # /usr/lib/systemd/system/mysql.service
 
 [Service]
@@ -59,7 +63,7 @@ This invocation can then be added to the `/etc/crontab` file:
 
 APPSIGNAL_APP_PUSH_API_KEY=...
 
-0 2 * * * /usr/local/bin/backup.sh
+0 2 * * * appsignal-wrap --cron backup -- bash /usr/local/bin/backup.sh
 ```
 
 In addition to the specified cron check-ins, by default `appsignal-wrap` will also send your database process' standard output and standard error as logs to AppSignal. Use the `--no-log` configuration option to disable this behaviour.
