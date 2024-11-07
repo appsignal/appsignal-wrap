@@ -9,7 +9,6 @@ fn nix_to_tokio(signal: &Signal) -> SignalKind {
         Signal::SIGTERM => SignalKind::terminate(),
         Signal::SIGHUP => SignalKind::hangup(),
         Signal::SIGQUIT => SignalKind::quit(),
-        Signal::SIGPIPE => SignalKind::pipe(),
         Signal::SIGUSR1 => SignalKind::user_defined1(),
         Signal::SIGUSR2 => SignalKind::user_defined2(),
         Signal::SIGWINCH => SignalKind::window_change(),
@@ -25,7 +24,7 @@ fn nix_to_tokio(signal: &Signal) -> SignalKind {
 // This list only includes signals that can be caught and handled by the
 // application. Signals that cannot be caught, such as SIGKILL and SIGSTOP,
 // are not included.
-const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
+const CHILD_FORWARDABLE_SIGNALS: [Signal; 7] = [
     Signal::SIGUSR1,
     Signal::SIGUSR2,
     Signal::SIGWINCH,
@@ -33,7 +32,6 @@ const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
     Signal::SIGTERM,
     Signal::SIGHUP,
     Signal::SIGQUIT,
-    Signal::SIGPIPE,
 ];
 
 // Returns whether a signal returned by a `signal_stream` represents an intent
@@ -50,7 +48,6 @@ const CHILD_FORWARDABLE_SIGNALS: [Signal; 8] = [
 // - `SIGWINCH`, which notifies the process of a terminal resize (and whose default
 //   behaviour is to be ignored)
 // - `SIGHUP`, which is sometimes used to trigger configuration refreshes
-// - `SIGPIPE`, which notifies the process of a broken pipe
 //
 // The objective is to ensure that only signals which were sent with the explicit
 // intent to terminate the child process cause this process to terminate.
@@ -69,20 +66,4 @@ pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
     }
 
     Ok(signals.map(|(signal, _)| signal))
-}
-
-// This function resets the SIGPIPE signal to its default behavior.
-// It is called at the beginning of the program.
-//
-// Signal handlers are inherited by child processes, and most software
-// expects SIGPIPE to be set to its default behavior. However,
-// the Rust standard library sets SIGPIPE to be ignored by default, which
-// can cause the child processes to behave differently than expected.
-//
-// See https://github.com/kurtbuilds/sigpipe (and the discussions linked
-// in the README) for more information.
-pub fn reset_sigpipe() {
-    unsafe {
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-    }
 }
