@@ -6,6 +6,20 @@
 - Send a start cron check-in to AppSignal when the process starts, and a finish cron check-in if it finishes successfully, to be able to track whether it runs successfully and on schedule.
 - Send heartbeat check-ins to AppSignal periodically, for as long as the process is active, to be able to monitor its uptime.
 
+## Installation
+
+The easiest way to get `appsignal-wrap` in your machine is to run our installation one-liner:
+
+```sh
+curl -sSL https://raw.githubusercontent.com/appsignal/appsignal-wrap/refs/heads/main/install.sh | sh
+```
+
+You'll need to run it with super-user privileges -- if you're not running this as root, prefix it with `sudo`.
+
+Currently, `appsignal-wrap` is only supported for Linux, in the x86_64 and ARM64 architectures. Linux distributions based on musl, such as Alpine, are also supported.
+
+Not a fan of `curl | sh` one-liners? Download the binary for your operating system and architecture [from our latest release](https://github.com/appsignal/appsignal-wrap/releases/latest/).
+
 ## Usage
 
 ```
