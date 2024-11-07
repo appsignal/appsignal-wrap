@@ -6,7 +6,7 @@ use crate::log::{LogConfig, LogOrigin};
 use ::log::warn;
 use clap::Parser;
 
-/// a wrapper to track the execution of arbitrary processes with AppSignal
+/// A wrapper to track the execution of arbitrary processes with AppSignal.
 ///
 /// This wrapper allows an arbitrary process to be executed, sending its
 /// standard output and standard error as logs to AppSignal, as well as
@@ -17,6 +17,7 @@ use clap::Parser;
 /// output and standard error to its own standard output and standard error,
 /// and it exits with the executed process's exit code.
 #[derive(Debug, Parser)]
+#[command(version)]
 pub struct Cli {
     /// The AppSignal *app-level* push API key.
     ///
