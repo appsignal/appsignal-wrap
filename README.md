@@ -53,7 +53,7 @@ This invocation can then be added to the `mysql.service` service definition:
 
 [Service]
 # Modify the existing ExecStart line to add `appsignal-wrap`
-ExecStart=/bin/appsignal-wrap --heartbeat database -- /usr/sbin/mysqld
+ExecStart=/usr/local/bin/appsignal-wrap --heartbeat database -- /usr/sbin/mysqld
 # Add an environment variable containing the AppSignal app-level push API key
 Environment=APPSIGNAL_APP_PUSH_API_KEY=...
 ```
