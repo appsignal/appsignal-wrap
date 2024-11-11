@@ -82,7 +82,7 @@ echo "Downloading $VERSION version of the \`appsignal-wrap\` binary for $FRIENDL
 if [ "$VERSION" = "latest" ]; then
   URL="https://github.com/appsignal/appsignal-wrap/releases/latest/download/$TRIPLE.tar.gz"
 else
-  URL="https://github.com/appsignal/appsignal-wrap/releases/download/$VERSION/$TRIPLE.tar.gz"
+  URL="https://github.com/appsignal/appsignal-wrap/releases/download/v$VERSION/$TRIPLE.tar.gz"
 fi
 
 curl --progress-bar -SL "$URL" | tar -C "$INSTALL_FOLDER" -xz
