@@ -54,6 +54,110 @@ fn main() {
     }
 }
 
+#[tokio::main]
+async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
+    let cron = cli.cron();
+    let log = cli.log();
+
+    let tasks = TaskTracker::new();
+
+    let mut child = command(&cli.command, &log).spawn()?;
+
+    let stdout = if log.origin.is_out() {
+        let (sender, receiver) = unbounded_channel();
+        tasks.spawn(pipe_lines(child.stdout.take().unwrap(), stdout(), sender));
+        Some(receiver)
+    } else {
+        None
+    };
+
+    let stderr = if log.origin.is_err() {
+        let (sender, receiver) = unbounded_channel();
+        tasks.spawn(pipe_lines(child.stderr.take().unwrap(), stderr(), sender));
+        Some(receiver)
+    } else {
+        None
+    };
+
+    if let Some(cron) = cron.as_ref() {
+        tasks.spawn(send_request(
+            cron.request(&mut SystemTimestamp, CronKind::Start),
+        ));
+    }
+
+    let heartbeat = cli.heartbeat().map(|config| {
+        let token = CancellationToken::new();
+        tasks.spawn(heartbeat_loop(config, token.clone()));
+        token
+    });
+
+    tasks.spawn(log_loop(log, stdout, stderr));
+
+    let exit_status = forward_signals_and_wait(child).await?;
+
+    debug!("command exited with: {}", exit_status);
+
+    if exit_status.success() {
+        if let Some(cron) = cron.as_ref() {
+            tasks.spawn(send_request(
+                cron.request(&mut SystemTimestamp, CronKind::Finish),
+            ));
+        }
+    }
+
+    if let Some(heartbeat) = heartbeat {
+        heartbeat.cancel();
+    }
+
+    tasks.close();
+
+    if !tasks.is_empty() {
+        debug!("waiting for {} tasks to complete", tasks.len());
+
+        // Calling `forward_signals_and_wait` earlier set a signal handler for those signals,
+        // overriding their default behaviour, which is to cause the process to terminate.
+        // After `forward_signals_and_wait` finishes, those signal handlers are still set.
+        //
+        // While we wait for the tasks to complete, we need to continue to listen to those
+        // signal handlers.
+        //
+        // This allows for the wrapper process to be terminated by certain signals both before
+        // and after the child process' lifetime.
+        //
+        // See https://docs.rs/tokio/latest/tokio/signal/unix/struct.Signal.html#caveats
+        // for reference.
+        let mut signals = signal_stream()?;
+
+        loop {
+            select! {
+                biased;
+
+                _ = tasks.wait() => {
+                    break;
+                }
+
+                Some(signal) = signals.next() => {
+                    if has_terminating_intent(&signal) {
+                        debug!("received terminating signal after child: {}", signal);
+                        return Ok(128 + signal as i32);
+                    } else {
+                        trace!("ignoring non-terminating signal after child: {}", signal);
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(code) = exit_status.code() {
+        Ok(code)
+    } else {
+        match exit_status.signal() {
+            Some(signal) => Ok(128 + signal),
+            None => Err("command exited without code or signal".into()),
+        }
+    }
+}
+
 fn command(argv: &[String], log: &LogConfig) -> Command {
     let mut command = Command::new(argv[0].clone());
     for arg in argv[1..].iter() {
@@ -262,110 +366,6 @@ async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
                     debug!("cannot forward signal to child: child process has no PID");
                 }
             }
-        }
-    }
-}
-
-#[tokio::main]
-async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
-    let cron = cli.cron();
-    let log = cli.log();
-
-    let tasks = TaskTracker::new();
-
-    let mut child = command(&cli.command, &log).spawn()?;
-
-    let stdout = if log.origin.is_out() {
-        let (sender, receiver) = unbounded_channel();
-        tasks.spawn(pipe_lines(child.stdout.take().unwrap(), stdout(), sender));
-        Some(receiver)
-    } else {
-        None
-    };
-
-    let stderr = if log.origin.is_err() {
-        let (sender, receiver) = unbounded_channel();
-        tasks.spawn(pipe_lines(child.stderr.take().unwrap(), stderr(), sender));
-        Some(receiver)
-    } else {
-        None
-    };
-
-    if let Some(cron) = cron.as_ref() {
-        tasks.spawn(send_request(
-            cron.request(&mut SystemTimestamp, CronKind::Start),
-        ));
-    }
-
-    let heartbeat = cli.heartbeat().map(|config| {
-        let token = CancellationToken::new();
-        tasks.spawn(heartbeat_loop(config, token.clone()));
-        token
-    });
-
-    tasks.spawn(log_loop(log, stdout, stderr));
-
-    let exit_status = forward_signals_and_wait(child).await?;
-
-    debug!("command exited with: {}", exit_status);
-
-    if exit_status.success() {
-        if let Some(cron) = cron.as_ref() {
-            tasks.spawn(send_request(
-                cron.request(&mut SystemTimestamp, CronKind::Finish),
-            ));
-        }
-    }
-
-    if let Some(heartbeat) = heartbeat {
-        heartbeat.cancel();
-    }
-
-    tasks.close();
-
-    if !tasks.is_empty() {
-        debug!("waiting for {} tasks to complete", tasks.len());
-
-        // Calling `forward_signals_and_wait` earlier set a signal handler for those signals,
-        // overriding their default behaviour, which is to cause the process to terminate.
-        // After `forward_signals_and_wait` finishes, those signal handlers are still set.
-        //
-        // While we wait for the tasks to complete, we need to continue to listen to those
-        // signal handlers.
-        //
-        // This allows for the wrapper process to be terminated by certain signals both before
-        // and after the child process' lifetime.
-        //
-        // See https://docs.rs/tokio/latest/tokio/signal/unix/struct.Signal.html#caveats
-        // for reference.
-        let mut signals = signal_stream()?;
-
-        loop {
-            select! {
-                biased;
-
-                _ = tasks.wait() => {
-                    break;
-                }
-
-                Some(signal) = signals.next() => {
-                    if has_terminating_intent(&signal) {
-                        debug!("received terminating signal after child: {}", signal);
-                        return Ok(128 + signal as i32);
-                    } else {
-                        trace!("ignoring non-terminating signal after child: {}", signal);
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(code) = exit_status.code() {
-        Ok(code)
-    } else {
-        match exit_status.signal() {
-            Some(signal) => Ok(128 + signal),
-            None => Err("command exited without code or signal".into()),
         }
     }
 }

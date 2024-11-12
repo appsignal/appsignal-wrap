@@ -23,7 +23,8 @@ fn nix_to_tokio(signal: &Signal) -> SignalKind {
 //
 // This list only includes signals that can be caught and handled by the
 // application. Signals that cannot be caught, such as SIGKILL and SIGSTOP,
-// are not included.
+// are not included. If the wrapper is killed by a `SIGKILL` or `SIGSTOP`,
+// the child process will receive a `SIGTERM` signal -- see `exit_with_parent`.
 const CHILD_FORWARDABLE_SIGNALS: [Signal; 7] = [
     Signal::SIGUSR1,
     Signal::SIGUSR2,

@@ -14,6 +14,15 @@ impl Timestamp for SystemTimestamp {
 
 const MONOTONIC_GAP: Duration = Duration::from_millis(1);
 
+// This works around an issue with the logging feature, where timestamps only
+// have millisecond precision. This can cause issues when multiple logs are
+// written in the same millisecond, as they will have the same timestamp and
+// they will be displayed out of order in the UI.
+
+// The monotonic timestamp prevents this issue by ensuring that the
+// timestamps returned between two successive calls are at least one
+// millisecond apart. This means, however, that the timestamps may not
+// accurately reflect the times at which the logs were written.
 pub struct MonotonicTimestamp<T: Timestamp> {
     last: Option<Duration>,
     source: T,
