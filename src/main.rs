@@ -19,6 +19,8 @@ use crate::signals::{has_terminating_intent, signal_stream};
 use crate::timestamp::SystemTimestamp;
 
 use ::log::{debug, error, trace};
+use error::ErrorConfig;
+use std::collections::VecDeque;
 use std::os::unix::process::ExitStatusExt;
 use std::process::{exit, ExitStatus, Stdio};
 use std::{
@@ -30,6 +32,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::{Child, Command};
 use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::oneshot;
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -55,16 +58,20 @@ fn main() {
     }
 }
 
-#[tokio::main]
-async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
-    let cron = cli.cron();
-    let log = cli.log();
+fn spawn_child(
+    cli: &Cli,
+    tasks: &TaskTracker,
+) -> io::Result<(
+    Child,
+    Option<UnboundedReceiver<String>>,
+    Option<UnboundedReceiver<String>>,
+)> {
+    let should_stdout = cli.should_pipe_stdout();
+    let should_stderr = cli.should_pipe_stderr();
 
-    let tasks = TaskTracker::new();
+    let mut child = command(&cli.command, should_stdout, should_stderr).spawn()?;
 
-    let mut child = command(&cli.command, &log).spawn()?;
-
-    let stdout = if log.origin.is_out() {
+    let stdout = if should_stdout {
         let (sender, receiver) = unbounded_channel();
         tasks.spawn(pipe_lines(child.stdout.take().unwrap(), stdout(), sender));
         Some(receiver)
@@ -72,13 +79,29 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         None
     };
 
-    let stderr = if log.origin.is_err() {
+    let stderr = if should_stderr {
         let (sender, receiver) = unbounded_channel();
         tasks.spawn(pipe_lines(child.stderr.take().unwrap(), stderr(), sender));
         Some(receiver)
     } else {
         None
     };
+
+    Ok((child, stdout, stderr))
+}
+
+#[tokio::main]
+async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
+    let cron = cli.cron();
+    let log = cli.log();
+    let error = cli.error();
+
+    let tasks = TaskTracker::new();
+
+    let (child, stdout, stderr) = spawn_child(&cli, &tasks)?;
+
+    let (log_stdout, error_stdout) = maybe_spawn_tee(stdout);
+    let (log_stderr, error_stderr) = maybe_spawn_tee(stderr);
 
     if let Some(cron) = cron.as_ref() {
         tasks.spawn(send_request(
@@ -92,7 +115,15 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         token
     });
 
-    tasks.spawn(log_loop(log, stdout, stderr));
+    tasks.spawn(log_loop(log, log_stdout, log_stderr));
+
+    let error_message = if error.is_some() {
+        let (sender, receiver) = oneshot::channel();
+        tasks.spawn(error_message_loop(sender, error_stdout, error_stderr));
+        Some(receiver)
+    } else {
+        None
+    };
 
     let exit_status = forward_signals_and_wait(child).await?;
 
@@ -105,9 +136,11 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
             ));
         }
     } else {
-        if let Some(error) = cli.error() {
-            tasks.spawn(send_request(
-                error.request(&mut SystemTimestamp, &exit_status),
+        if let Some(error) = error {
+            tasks.spawn(send_error_request(
+                error,
+                exit_status.clone(),
+                error_message.unwrap(),
             ));
         }
     }
@@ -165,17 +198,17 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     }
 }
 
-fn command(argv: &[String], log: &LogConfig) -> Command {
+fn command(argv: &[String], should_stdout: bool, should_stderr: bool) -> Command {
     let mut command = Command::new(argv[0].clone());
     for arg in argv[1..].iter() {
         command.arg(arg);
     }
 
-    if log.origin.is_out() {
+    if should_stdout {
         command.stdout(Stdio::piped());
     }
 
-    if log.origin.is_err() {
+    if should_stderr {
         command.stderr(Stdio::piped());
     }
 
@@ -193,7 +226,7 @@ fn command(argv: &[String], log: &LogConfig) -> Command {
 async fn pipe_lines(
     from: impl AsyncRead + Unpin + Send + 'static,
     mut to: impl Write + Send + 'static,
-    sender: UnboundedSender<Option<String>>,
+    sender: UnboundedSender<String>,
 ) {
     let mut from = BufReader::new(from).lines();
 
@@ -205,7 +238,7 @@ async fn pipe_lines(
                     break;
                 }
 
-                if let Err(err) = sender.send(Some(line)) {
+                if let Err(err) = sender.send(line) {
                     debug!("error sending line: {}", err);
                     break;
                 };
@@ -217,33 +250,6 @@ async fn pipe_lines(
             }
         }
     }
-
-    if let Err(err) = sender.send(None) {
-        debug!("error sending EOF: {}", err);
-    }
-}
-
-async fn send_request(request: Result<reqwest::Request, reqwest::Error>) {
-    let request = match request {
-        Ok(request) => request,
-        Err(err) => {
-            debug!("error creating request: {}", err);
-            return;
-        }
-    };
-
-    match client().execute(request.try_clone().unwrap()).await {
-        Ok(response) => {
-            if !response.status().is_success() {
-                debug!("request failed with status: {}", response.status());
-            } else {
-                trace!("request successful: {}", request.url());
-            }
-        }
-        Err(err) => {
-            debug!("error sending request: {:?}", err);
-        }
-    };
 }
 
 async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
@@ -264,23 +270,18 @@ async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
     }
 }
 
-async fn maybe_recv<T>(receiver: &mut Option<UnboundedReceiver<T>>) -> Option<T> {
-    match receiver {
-        Some(receiver) => receiver.recv().await,
-        None => None,
-    }
-}
+const LOG_MESSAGES_BATCH_SIZE: usize = 100;
 
 async fn log_loop(
     log: LogConfig,
-    mut stdout: Option<UnboundedReceiver<Option<String>>>,
-    mut stderr: Option<UnboundedReceiver<Option<String>>>,
+    mut stdout: Option<UnboundedReceiver<String>>,
+    mut stderr: Option<UnboundedReceiver<String>>,
 ) {
-    let mut timestamp = MonotonicTimestamp::new(SystemTimestamp);
-
     if stdout.is_none() && stderr.is_none() {
         return;
     }
+
+    let mut timestamp = MonotonicTimestamp::new(SystemTimestamp);
 
     let mut messages = Vec::new();
     let mut interval = interval(Duration::from_secs(10));
@@ -289,7 +290,7 @@ async fn log_loop(
     let tasks = TaskTracker::new();
 
     loop {
-        if messages.len() >= 100 {
+        if messages.len() >= LOG_MESSAGES_BATCH_SIZE {
             let request = log.request(std::mem::take(&mut messages));
             tasks.spawn(send_request(request));
             interval.reset();
@@ -348,6 +349,63 @@ async fn log_loop(
     tasks.wait().await;
 }
 
+const ERROR_MESSAGE_LINES: usize = 10;
+
+async fn error_message_loop(
+    sender: oneshot::Sender<VecDeque<String>>,
+    mut stdout: Option<UnboundedReceiver<String>>,
+    mut stderr: Option<UnboundedReceiver<String>>,
+) {
+    let mut lines = VecDeque::with_capacity(ERROR_MESSAGE_LINES);
+
+    loop {
+        select! {
+            Some(maybe_line) = maybe_recv(&mut stdout) => {
+                match maybe_line {
+                    None => {
+                        stdout = None;
+                        if stderr.is_none() {
+                            break;
+                        }
+                    }
+                    Some(line) => {
+                        if lines.len() >= ERROR_MESSAGE_LINES {
+                            lines.pop_front();
+                        }
+
+                        lines.push_back(line);
+                    }
+                }
+            }
+
+            Some(maybe_line) = maybe_recv(&mut stderr) => {
+                match maybe_line {
+                    None => {
+                        stderr = None;
+                        if stdout.is_none() {
+                            break;
+                        }
+                    }
+                    Some(line) => {
+                        if lines.len() >= ERROR_MESSAGE_LINES {
+                            lines.pop_front();
+                        }
+
+                        lines.push_back(line);
+                    }
+                }
+            }
+
+            else => break
+        }
+    }
+
+    match sender.send(lines.into()) {
+        Err(_) => debug!("error sending error message"),
+        _ => (),
+    };
+}
+
 async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
     use nix::sys::signal::kill;
     use nix::unistd::Pid;
@@ -375,4 +433,94 @@ async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
             }
         }
     }
+}
+
+async fn send_error_request(
+    error: ErrorConfig,
+    exit_status: ExitStatus,
+    receiver: oneshot::Receiver<VecDeque<String>>,
+) {
+    let lines = match receiver.await {
+        Ok(lines) => lines,
+        Err(_) => {
+            debug!("error receiving error message");
+            VecDeque::new()
+        }
+    };
+
+    send_request(error.request(&mut SystemTimestamp, &exit_status, lines)).await;
+}
+
+async fn maybe_recv<T>(receiver: &mut Option<UnboundedReceiver<T>>) -> Option<Option<T>> {
+    match receiver {
+        Some(receiver) => Some(receiver.recv().await),
+        None => None,
+    }
+}
+
+fn maybe_spawn_tee<T: Clone + Send + 'static>(
+    receiver: Option<UnboundedReceiver<T>>,
+) -> (Option<UnboundedReceiver<T>>, Option<UnboundedReceiver<T>>) {
+    match receiver {
+        Some(receiver) => {
+            let (first_receiver, second_receiver) = spawn_tee(receiver);
+            (Some(first_receiver), Some(second_receiver))
+        }
+        None => (None, None),
+    }
+}
+
+fn spawn_tee<T: Clone + Send + 'static>(
+    receiver: UnboundedReceiver<T>,
+) -> (UnboundedReceiver<T>, UnboundedReceiver<T>) {
+    let (first_sender, first_receiver) = unbounded_channel();
+    let (second_sender, second_receiver) = unbounded_channel();
+
+    tokio::spawn(tee(receiver, first_sender, second_sender));
+
+    (first_receiver, second_receiver)
+}
+
+// An utility function that takes an unbounded receiver and returns two
+// unbounded receivers that will receive the same items. The items must
+// implement the `Clone` trait.
+async fn tee<T: Clone + Send + 'static>(
+    mut receiver: UnboundedReceiver<T>,
+    first_sender: UnboundedSender<T>,
+    second_sender: UnboundedSender<T>,
+) {
+    while let Some(item) = receiver.recv().await {
+        if let Err(err) = first_sender.send(item.clone()) {
+            debug!("error sending item to first receiver: {}", err);
+            break;
+        }
+
+        if let Err(err) = second_sender.send(item) {
+            debug!("error sending item to second receiver: {}", err);
+            break;
+        }
+    }
+}
+
+async fn send_request(request: Result<reqwest::Request, reqwest::Error>) {
+    let request = match request {
+        Ok(request) => request,
+        Err(err) => {
+            debug!("error creating request: {}", err);
+            return;
+        }
+    };
+
+    match client().execute(request.try_clone().unwrap()).await {
+        Ok(response) => {
+            if !response.status().is_success() {
+                debug!("request failed with status: {}", response.status());
+            } else {
+                trace!("request successful: {}", request.url());
+            }
+        }
+        Err(err) => {
+            debug!("error sending request: {:?}", err);
+        }
+    };
 }

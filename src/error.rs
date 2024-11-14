@@ -23,6 +23,7 @@ impl ErrorConfig {
         &self,
         timestamp: &mut impl Timestamp,
         exit: &ExitStatus,
+        lines: impl IntoIterator<Item = String>,
     ) -> Result<reqwest::Request, reqwest::Error> {
         let url = format!("{}/errors", self.endpoint);
 
@@ -30,7 +31,7 @@ impl ErrorConfig {
             .post(url)
             .query(&[("api_key", &self.api_key)])
             .header("Content-Type", "application/json")
-            .body(ErrorBody::from_config(&self, timestamp, exit))
+            .body(ErrorBody::from_config(&self, timestamp, exit, lines))
             .build()
     }
 }
@@ -49,12 +50,13 @@ impl ErrorBody {
         config: &ErrorConfig,
         timestamp: &mut impl Timestamp,
         exit: &ExitStatus,
+        lines: impl IntoIterator<Item = String>,
     ) -> Self {
         ErrorBody {
             timestamp: timestamp.as_secs(),
             action: config.action.clone(),
             namespace: "process".to_string(),
-            error: ErrorBodyError::from_exit(exit),
+            error: ErrorBodyError::new(exit, lines),
             tags: exit_tags(exit)
                 .into_iter()
                 .chain([
@@ -79,23 +81,24 @@ pub struct ErrorBodyError {
 }
 
 impl ErrorBodyError {
-    pub fn from_exit(exit: &ExitStatus) -> Self {
-        if let Some(code) = exit.code() {
-            ErrorBodyError {
-                name: "NonZeroExit".to_string(),
-                message: format!("Process exited with code {}", code),
-            }
+    pub fn new(exit: &ExitStatus, lines: impl IntoIterator<Item = String>) -> Self {
+        let (name, exit_context) = if let Some(code) = exit.code() {
+            ("NonZeroExit".to_string(), format!("code {}", code))
         } else if let Some(signal) = exit.signal() {
-            ErrorBodyError {
-                name: "SignalExit".to_string(),
-                message: format!("Process exited with signal {}", signal_name(signal)),
-            }
+            (
+                "SignalExit".to_string(),
+                format!("signal {}", signal_name(signal)),
+            )
         } else {
-            ErrorBodyError {
-                name: "UnknownExit".to_string(),
-                message: "Process exited with unknown status".to_string(),
-            }
-        }
+            ("UnknownExit".to_string(), "unknown status".to_string())
+        };
+
+        let mut lines = lines.into_iter().collect::<Vec<String>>();
+        lines.push(format!("[Process exited with {}]", exit_context));
+
+        let message = lines.join("\n");
+
+        ErrorBodyError { name, message }
     }
 }
 
@@ -137,9 +140,11 @@ mod tests {
         let config = error_config();
         // `ExitStatus::from_raw` expects a wait status, not an exit status.
         // The wait status for exit code `n` is represented by `n << 8`.
+        // See `__WEXITSTATUS` in `glibc/bits/waitstatus.h` for reference.
         let exit = ExitStatus::from_raw(42 << 8);
+        let lines = vec!["line 1".to_string(), "line 2".to_string()];
 
-        let request = config.request(&mut timestamp(), &exit).unwrap();
+        let request = config.request(&mut timestamp(), &exit, lines).unwrap();
 
         assert_eq!(request.method().as_str(), "POST");
         assert_eq!(
@@ -160,7 +165,7 @@ mod tests {
                     r#""namespace":"process","#,
                     r#""error":{{"#,
                     r#""name":"NonZeroExit","#,
-                    r#""message":"Process exited with code 42""#,
+                    r#""message":"line 1\nline 2\n[Process exited with code 42]""#,
                     r#"}},"#,
                     r#""tags":{{"#,
                     r#""{}-digest":"some-digest","#,

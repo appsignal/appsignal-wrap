@@ -79,11 +79,19 @@ pub struct Cli {
     #[arg(long, value_name = "IDENTIFIER", requires = "api_key")]
     cron: Option<String>,
 
-    /// Do not send standard output as logs.
+    /// Do not send standard output.
+    ///
+    /// Do not send standard output as logs, and do not use the last
+    /// lines of standard output as part of the error message when
+    /// `--error` is set.
     #[arg(long)]
     no_stdout: bool,
 
-    /// Do not send standard error as logs.
+    /// Do not send standard error.
+    ///
+    /// Do not send standard error as logs, and do not use the last
+    /// lines of standard error as part of the error message when
+    /// `--error` is set.
     #[arg(long)]
     no_stderr: bool,
 
@@ -246,7 +254,7 @@ impl Cli {
             .unwrap()
             .clone();
         let endpoint = self.endpoint.clone();
-        let origin = LogOrigin::from_args(self.no_log, self.no_stdout, self.no_stderr);
+        let origin = self.log_origin();
         let group = self.log.clone().unwrap_or_else(|| "process".to_string());
         let hostname = self.hostname.clone();
         let digest: String = self.digest.clone();
@@ -277,6 +285,30 @@ impl Cli {
                 digest,
             }
         })
+    }
+
+    fn log_origin(&self) -> LogOrigin {
+        LogOrigin::from_args(self.no_log, self.no_stdout, self.no_stderr)
+    }
+
+    pub fn should_pipe_stderr(&self) -> bool {
+        // If `--error` is set, we need to pipe stderr for the error message,
+        // even if we're not sending logs, unless `--no-stderr` is set.
+        if self.error.is_some() {
+            return !self.no_stderr;
+        }
+
+        self.log_origin().is_err()
+    }
+
+    pub fn should_pipe_stdout(&self) -> bool {
+        // If `--error` is set, we need to pipe stdout for the error message,
+        // even if we're not sending logs, unless `--no-stdout` is set.
+        if self.error.is_some() {
+            return !self.no_stdout;
+        }
+
+        self.log_origin().is_out()
     }
 }
 
