@@ -1,5 +1,6 @@
 mod check_in;
 mod cli;
+mod error;
 mod log;
 
 mod client;
@@ -101,6 +102,12 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         if let Some(cron) = cron.as_ref() {
             tasks.spawn(send_request(
                 cron.request(&mut SystemTimestamp, CronKind::Finish),
+            ));
+        }
+    } else {
+        if let Some(error) = cli.error() {
+            tasks.spawn(send_request(
+                error.request(&mut SystemTimestamp, &exit_status),
             ));
         }
     }

@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 
 use crate::check_in::{CheckInConfig, CronConfig, HeartbeatConfig};
+use crate::error::ErrorConfig;
 use crate::log::{LogConfig, LogOrigin};
 
 use ::log::warn;
@@ -42,6 +43,13 @@ pub struct Cli {
     /// --no-log option to disable sending logs entirely.
     #[arg(long, value_name = "GROUP")]
     log: Option<String>,
+
+    /// The action name to use to group errors by.
+    ///
+    /// If this option is not set, errors will not be sent to AppSignal when
+    /// a process exits with a non-zero exit code.
+    #[arg(long, value_name = "ACTION", requires = "api_key")]
+    error: Option<String>,
 
     /// The log source API key to use to send logs.
     ///
@@ -251,6 +259,24 @@ impl Cli {
             group,
             digest,
         }
+    }
+
+    pub fn error(&self) -> Option<ErrorConfig> {
+        self.error.as_ref().map(|action| {
+            let api_key = self.api_key.as_ref().unwrap().clone();
+            let endpoint = self.endpoint.clone();
+            let action = action.clone();
+            let hostname = self.hostname.clone();
+            let digest = self.digest.clone();
+
+            ErrorConfig {
+                api_key,
+                endpoint,
+                action,
+                hostname,
+                digest,
+            }
+        })
     }
 }
 

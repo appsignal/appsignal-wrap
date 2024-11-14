@@ -68,3 +68,41 @@ pub fn signal_stream() -> io::Result<impl Stream<Item = Signal>> {
 
     Ok(signals.map(|(signal, _)| signal))
 }
+
+// A mapping of signal numbers to signal names. Uses `libc` constants to
+// correctly map non-portable signals to their names across platforms.
+// For an unknown signal, the signal number is returned as a string.
+pub fn signal_name(signal: i32) -> String {
+    match signal {
+        libc::SIGABRT => "SIGABRT".to_owned(),
+        libc::SIGALRM => "SIGALRM".to_owned(),
+        libc::SIGBUS => "SIGBUS".to_owned(),
+        libc::SIGCHLD => "SIGCHLD".to_owned(),
+        libc::SIGCONT => "SIGCONT".to_owned(),
+        libc::SIGFPE => "SIGFPE".to_owned(),
+        libc::SIGHUP => "SIGHUP".to_owned(),
+        libc::SIGILL => "SIGILL".to_owned(),
+        libc::SIGINT => "SIGINT".to_owned(),
+        libc::SIGIO => "SIGIO".to_owned(),
+        libc::SIGKILL => "SIGKILL".to_owned(),
+        libc::SIGPIPE => "SIGPIPE".to_owned(),
+        libc::SIGPROF => "SIGPROF".to_owned(),
+        libc::SIGQUIT => "SIGQUIT".to_owned(),
+        libc::SIGSEGV => "SIGSEGV".to_owned(),
+        libc::SIGSTOP => "SIGSTOP".to_owned(),
+        libc::SIGSYS => "SIGSYS".to_owned(),
+        libc::SIGTERM => "SIGTERM".to_owned(),
+        libc::SIGTRAP => "SIGTRAP".to_owned(),
+        libc::SIGTSTP => "SIGTSTP".to_owned(),
+        libc::SIGTTIN => "SIGTTIN".to_owned(),
+        libc::SIGTTOU => "SIGTTOU".to_owned(),
+        libc::SIGURG => "SIGURG".to_owned(),
+        libc::SIGUSR1 => "SIGUSR1".to_owned(),
+        libc::SIGUSR2 => "SIGUSR2".to_owned(),
+        libc::SIGVTALRM => "SIGVTALRM".to_owned(),
+        libc::SIGWINCH => "SIGWINCH".to_owned(),
+        libc::SIGXCPU => "SIGXCPU".to_owned(),
+        libc::SIGXFSZ => "SIGXFSZ".to_owned(),
+        signal => format!("{}", signal),
+    }
+}
