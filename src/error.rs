@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use crate::client::client;
 use crate::package::NAME;
-use crate::signals::signal_name;
+use crate::signal::signal_name;
 use crate::timestamp::Timestamp;
 
 pub struct ErrorConfig {

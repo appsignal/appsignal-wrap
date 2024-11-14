@@ -7,7 +7,7 @@ mod client;
 mod exit;
 mod ndjson;
 mod package;
-mod signals;
+mod signal;
 mod timestamp;
 
 use crate::check_in::{CronKind, HeartbeatConfig};
@@ -15,7 +15,7 @@ use crate::cli::Cli;
 use crate::client::client;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::package::NAME;
-use crate::signals::{has_terminating_intent, signal_stream};
+use crate::signal::{has_terminating_intent, signal_stream};
 use crate::timestamp::SystemTimestamp;
 
 use ::log::{debug, error, trace};
