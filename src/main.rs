@@ -105,14 +105,12 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
                 cron.request(&mut SystemTimestamp, CronKind::Finish),
             ));
         }
-    } else {
-        if let Some(error) = error {
-            tasks.spawn(send_error_request(
-                error,
-                exit_status.clone(),
-                error_message.unwrap(),
-            ));
-        }
+    } else if let Some(error) = error {
+        tasks.spawn(send_error_request(
+            error,
+            exit_status,
+            error_message.unwrap(),
+        ));
     }
 
     if let Some(heartbeat) = heartbeat {
@@ -168,14 +166,13 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     }
 }
 
-fn spawn_child(
-    cli: &Cli,
-    tasks: &TaskTracker,
-) -> io::Result<(
+type SpawnedChild = (
     Child,
     Option<UnboundedReceiver<String>>,
     Option<UnboundedReceiver<String>>,
-)> {
+);
+
+fn spawn_child(cli: &Cli, tasks: &TaskTracker) -> io::Result<SpawnedChild> {
     let should_stdout = cli.should_pipe_stdout();
     let should_stderr = cli.should_pipe_stderr();
 
@@ -381,10 +378,9 @@ async fn error_message_loop(
         }
     }
 
-    match sender.send(lines.into()) {
-        Err(_) => debug!("error sending error message"),
-        _ => (),
-    };
+    if sender.send(lines).is_err() {
+        debug!("error sending error message");
+    }
 }
 
 async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {

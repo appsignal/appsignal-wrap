@@ -31,7 +31,7 @@ impl ErrorConfig {
             .post(url)
             .query(&[("api_key", &self.api_key)])
             .header("Content-Type", "application/json")
-            .body(ErrorBody::from_config(&self, timestamp, exit, lines))
+            .body(ErrorBody::from_config(self, timestamp, exit, lines))
             .build()
     }
 }
