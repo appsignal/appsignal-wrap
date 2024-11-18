@@ -67,7 +67,7 @@ pub struct Cli {
     ///
     /// If this option is set, a heartbeat check-in will be sent two times
     /// per minute.
-    #[arg(long, value_name = "IDENTIFIER", requires = "api_key")]
+    #[arg(long, value_name = "IDENTIFIER", requires = "api_key", conflicts_with = "cron")]
     heartbeat: Option<String>,
 
     /// The identifier to use to send cron check-ins.
@@ -76,7 +76,7 @@ pub struct Cli {
     /// process starts, and if the wrapped process finishes with a success
     /// exit code, a finish cron check-in will be sent when the process
     /// finishes.
-    #[arg(long, value_name = "IDENTIFIER", requires = "api_key")]
+    #[arg(long, value_name = "IDENTIFIER", requires = "api_key", conflicts_with = "heartbeat")]
     cron: Option<String>,
 
     /// Do not send standard output.
@@ -472,18 +472,6 @@ mod tests {
     #[test]
     fn cli_check_in_config() {
         for (args, cron, heartbeat) in [
-            (
-                vec![
-                    "--cron",
-                    "some-cron",
-                    "--digest",
-                    "some-digest",
-                    "--heartbeat",
-                    "some-heartbeat",
-                ],
-                true,
-                true,
-            ),
             (
                 vec!["--cron", "some-cron", "--digest", "some-digest"],
                 true,
