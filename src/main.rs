@@ -1,23 +1,28 @@
 mod check_in;
 mod cli;
+mod error;
 mod log;
 
+mod channel;
 mod client;
 mod exit;
 mod ndjson;
 mod package;
-mod signals;
+mod signal;
 mod timestamp;
 
+use crate::channel::{maybe_recv, maybe_spawn_tee};
 use crate::check_in::{CronKind, HeartbeatConfig};
 use crate::cli::Cli;
-use crate::client::client;
+use crate::client::send_request;
 use crate::log::{LogConfig, LogMessage, LogSeverity};
 use crate::package::NAME;
-use crate::signals::{has_terminating_intent, signal_stream};
+use crate::signal::{has_terminating_intent, signal_stream};
 use crate::timestamp::SystemTimestamp;
 
 use ::log::{debug, error, trace};
+use error::ErrorConfig;
+use std::collections::VecDeque;
 use std::os::unix::process::ExitStatusExt;
 use std::process::{exit, ExitStatus, Stdio};
 use std::{
@@ -29,6 +34,7 @@ use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::{Child, Command};
 use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::oneshot;
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tokio_stream::StreamExt;
 use tokio_util::sync::CancellationToken;
@@ -58,26 +64,14 @@ fn main() {
 async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     let cron = cli.cron();
     let log = cli.log();
+    let error = cli.error();
 
     let tasks = TaskTracker::new();
 
-    let mut child = command(&cli.command, &log).spawn()?;
+    let (child, stdout, stderr) = spawn_child(&cli, &tasks)?;
 
-    let stdout = if log.origin.is_out() {
-        let (sender, receiver) = unbounded_channel();
-        tasks.spawn(pipe_lines(child.stdout.take().unwrap(), stdout(), sender));
-        Some(receiver)
-    } else {
-        None
-    };
-
-    let stderr = if log.origin.is_err() {
-        let (sender, receiver) = unbounded_channel();
-        tasks.spawn(pipe_lines(child.stderr.take().unwrap(), stderr(), sender));
-        Some(receiver)
-    } else {
-        None
-    };
+    let (log_stdout, error_stdout) = maybe_spawn_tee(stdout);
+    let (log_stderr, error_stderr) = maybe_spawn_tee(stderr);
 
     if let Some(cron) = cron.as_ref() {
         tasks.spawn(send_request(
@@ -91,7 +85,15 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
         token
     });
 
-    tasks.spawn(log_loop(log, stdout, stderr));
+    tasks.spawn(log_loop(log, log_stdout, log_stderr));
+
+    let error_message = if error.is_some() {
+        let (sender, receiver) = oneshot::channel();
+        tasks.spawn(error_message_loop(sender, error_stdout, error_stderr));
+        Some(receiver)
+    } else {
+        None
+    };
 
     let exit_status = forward_signals_and_wait(child).await?;
 
@@ -103,6 +105,12 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
                 cron.request(&mut SystemTimestamp, CronKind::Finish),
             ));
         }
+    } else if let Some(error) = error {
+        tasks.spawn(send_error_request(
+            error,
+            exit_status,
+            error_message.unwrap(),
+        ));
     }
 
     if let Some(heartbeat) = heartbeat {
@@ -158,25 +166,35 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
     }
 }
 
-fn command(argv: &[String], log: &LogConfig) -> Command {
-    let mut command = Command::new(argv[0].clone());
-    for arg in argv[1..].iter() {
-        command.arg(arg);
-    }
+type SpawnedChild = (
+    Child,
+    Option<UnboundedReceiver<String>>,
+    Option<UnboundedReceiver<String>>,
+);
 
-    if log.origin.is_out() {
-        command.stdout(Stdio::piped());
-    }
+fn spawn_child(cli: &Cli, tasks: &TaskTracker) -> io::Result<SpawnedChild> {
+    let should_stdout = cli.should_pipe_stdout();
+    let should_stderr = cli.should_pipe_stderr();
 
-    if log.origin.is_err() {
-        command.stderr(Stdio::piped());
-    }
+    let mut child = command(&cli.command, should_stdout, should_stderr).spawn()?;
 
-    unsafe {
-        command.pre_exec(exit::exit_with_parent);
-    }
+    let stdout = if should_stdout {
+        let (sender, receiver) = unbounded_channel();
+        tasks.spawn(pipe_lines(child.stdout.take().unwrap(), stdout(), sender));
+        Some(receiver)
+    } else {
+        None
+    };
 
-    command
+    let stderr = if should_stderr {
+        let (sender, receiver) = unbounded_channel();
+        tasks.spawn(pipe_lines(child.stderr.take().unwrap(), stderr(), sender));
+        Some(receiver)
+    } else {
+        None
+    };
+
+    Ok((child, stdout, stderr))
 }
 
 // Pipes lines from an asynchronous reader to a synchronous writer, returning
@@ -186,7 +204,7 @@ fn command(argv: &[String], log: &LogConfig) -> Command {
 async fn pipe_lines(
     from: impl AsyncRead + Unpin + Send + 'static,
     mut to: impl Write + Send + 'static,
-    sender: UnboundedSender<Option<String>>,
+    sender: UnboundedSender<String>,
 ) {
     let mut from = BufReader::new(from).lines();
 
@@ -198,7 +216,7 @@ async fn pipe_lines(
                     break;
                 }
 
-                if let Err(err) = sender.send(Some(line)) {
+                if let Err(err) = sender.send(line) {
                     debug!("error sending line: {}", err);
                     break;
                 };
@@ -210,33 +228,6 @@ async fn pipe_lines(
             }
         }
     }
-
-    if let Err(err) = sender.send(None) {
-        debug!("error sending EOF: {}", err);
-    }
-}
-
-async fn send_request(request: Result<reqwest::Request, reqwest::Error>) {
-    let request = match request {
-        Ok(request) => request,
-        Err(err) => {
-            debug!("error creating request: {}", err);
-            return;
-        }
-    };
-
-    match client().execute(request.try_clone().unwrap()).await {
-        Ok(response) => {
-            if !response.status().is_success() {
-                debug!("request failed with status: {}", response.status());
-            } else {
-                trace!("request successful: {}", request.url());
-            }
-        }
-        Err(err) => {
-            debug!("error sending request: {:?}", err);
-        }
-    };
 }
 
 async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
@@ -257,23 +248,18 @@ async fn heartbeat_loop(config: HeartbeatConfig, cancel: CancellationToken) {
     }
 }
 
-async fn maybe_recv<T>(receiver: &mut Option<UnboundedReceiver<T>>) -> Option<T> {
-    match receiver {
-        Some(receiver) => receiver.recv().await,
-        None => None,
-    }
-}
+const LOG_MESSAGES_BATCH_SIZE: usize = 100;
 
 async fn log_loop(
     log: LogConfig,
-    mut stdout: Option<UnboundedReceiver<Option<String>>>,
-    mut stderr: Option<UnboundedReceiver<Option<String>>>,
+    mut stdout: Option<UnboundedReceiver<String>>,
+    mut stderr: Option<UnboundedReceiver<String>>,
 ) {
-    let mut timestamp = MonotonicTimestamp::new(SystemTimestamp);
-
     if stdout.is_none() && stderr.is_none() {
         return;
     }
+
+    let mut timestamp = MonotonicTimestamp::new(SystemTimestamp);
 
     let mut messages = Vec::new();
     let mut interval = interval(Duration::from_secs(10));
@@ -282,7 +268,7 @@ async fn log_loop(
     let tasks = TaskTracker::new();
 
     loop {
-        if messages.len() >= 100 {
+        if messages.len() >= LOG_MESSAGES_BATCH_SIZE {
             let request = log.request(std::mem::take(&mut messages));
             tasks.spawn(send_request(request));
             interval.reset();
@@ -341,6 +327,62 @@ async fn log_loop(
     tasks.wait().await;
 }
 
+const ERROR_MESSAGE_LINES: usize = 10;
+
+async fn error_message_loop(
+    sender: oneshot::Sender<VecDeque<String>>,
+    mut stdout: Option<UnboundedReceiver<String>>,
+    mut stderr: Option<UnboundedReceiver<String>>,
+) {
+    let mut lines = VecDeque::with_capacity(ERROR_MESSAGE_LINES);
+
+    loop {
+        select! {
+            Some(maybe_line) = maybe_recv(&mut stdout) => {
+                match maybe_line {
+                    None => {
+                        stdout = None;
+                        if stderr.is_none() {
+                            break;
+                        }
+                    }
+                    Some(line) => {
+                        if lines.len() >= ERROR_MESSAGE_LINES {
+                            lines.pop_front();
+                        }
+
+                        lines.push_back(line);
+                    }
+                }
+            }
+
+            Some(maybe_line) = maybe_recv(&mut stderr) => {
+                match maybe_line {
+                    None => {
+                        stderr = None;
+                        if stdout.is_none() {
+                            break;
+                        }
+                    }
+                    Some(line) => {
+                        if lines.len() >= ERROR_MESSAGE_LINES {
+                            lines.pop_front();
+                        }
+
+                        lines.push_back(line);
+                    }
+                }
+            }
+
+            else => break
+        }
+    }
+
+    if sender.send(lines).is_err() {
+        debug!("error sending error message");
+    }
+}
+
 async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
     use nix::sys::signal::kill;
     use nix::unistd::Pid;
@@ -368,4 +410,41 @@ async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
             }
         }
     }
+}
+
+async fn send_error_request(
+    error: ErrorConfig,
+    exit_status: ExitStatus,
+    receiver: oneshot::Receiver<VecDeque<String>>,
+) {
+    let lines = match receiver.await {
+        Ok(lines) => lines,
+        Err(_) => {
+            debug!("error receiving error message");
+            VecDeque::new()
+        }
+    };
+
+    send_request(error.request(&mut SystemTimestamp, &exit_status, lines)).await;
+}
+
+fn command(argv: &[String], should_stdout: bool, should_stderr: bool) -> Command {
+    let mut command = Command::new(argv[0].clone());
+    for arg in argv[1..].iter() {
+        command.arg(arg);
+    }
+
+    if should_stdout {
+        command.stdout(Stdio::piped());
+    }
+
+    if should_stderr {
+        command.stderr(Stdio::piped());
+    }
+
+    unsafe {
+        command.pre_exec(exit::exit_with_parent);
+    }
+
+    command
 }

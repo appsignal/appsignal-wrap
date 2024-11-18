@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 
 use crate::check_in::{CheckInConfig, CronConfig, HeartbeatConfig};
+use crate::error::ErrorConfig;
 use crate::log::{LogConfig, LogOrigin};
 
 use ::log::warn;
@@ -43,6 +44,13 @@ pub struct Cli {
     #[arg(long, value_name = "GROUP")]
     log: Option<String>,
 
+    /// The action name to use to group errors by.
+    ///
+    /// If this option is not set, errors will not be sent to AppSignal when
+    /// a process exits with a non-zero exit code.
+    #[arg(long, value_name = "ACTION", requires = "api_key")]
+    error: Option<String>,
+
     /// The log source API key to use to send logs.
     ///
     /// If this option is not set, logs will be sent to the default
@@ -71,11 +79,19 @@ pub struct Cli {
     #[arg(long, value_name = "IDENTIFIER", requires = "api_key")]
     cron: Option<String>,
 
-    /// Do not send standard output as logs.
+    /// Do not send standard output.
+    ///
+    /// Do not send standard output as logs, and do not use the last
+    /// lines of standard output as part of the error message when
+    /// `--error` is set.
     #[arg(long)]
     no_stdout: bool,
 
-    /// Do not send standard error as logs.
+    /// Do not send standard error.
+    ///
+    /// Do not send standard error as logs, and do not use the last
+    /// lines of standard error as part of the error message when
+    /// `--error` is set.
     #[arg(long)]
     no_stderr: bool,
 
@@ -238,7 +254,7 @@ impl Cli {
             .unwrap()
             .clone();
         let endpoint = self.endpoint.clone();
-        let origin = LogOrigin::from_args(self.no_log, self.no_stdout, self.no_stderr);
+        let origin = self.log_origin();
         let group = self.log.clone().unwrap_or_else(|| "process".to_string());
         let hostname = self.hostname.clone();
         let digest: String = self.digest.clone();
@@ -251,6 +267,48 @@ impl Cli {
             group,
             digest,
         }
+    }
+
+    pub fn error(&self) -> Option<ErrorConfig> {
+        self.error.as_ref().map(|action| {
+            let api_key = self.api_key.as_ref().unwrap().clone();
+            let endpoint = self.endpoint.clone();
+            let action = action.clone();
+            let hostname = self.hostname.clone();
+            let digest = self.digest.clone();
+
+            ErrorConfig {
+                api_key,
+                endpoint,
+                action,
+                hostname,
+                digest,
+            }
+        })
+    }
+
+    fn log_origin(&self) -> LogOrigin {
+        LogOrigin::from_args(self.no_log, self.no_stdout, self.no_stderr)
+    }
+
+    pub fn should_pipe_stderr(&self) -> bool {
+        // If `--error` is set, we need to pipe stderr for the error message,
+        // even if we're not sending logs, unless `--no-stderr` is set.
+        if self.error.is_some() {
+            return !self.no_stderr;
+        }
+
+        self.log_origin().is_err()
+    }
+
+    pub fn should_pipe_stdout(&self) -> bool {
+        // If `--error` is set, we need to pipe stdout for the error message,
+        // even if we're not sending logs, unless `--no-stdout` is set.
+        if self.error.is_some() {
+            return !self.no_stdout;
+        }
+
+        self.log_origin().is_out()
     }
 }
 
