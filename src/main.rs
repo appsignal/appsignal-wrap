@@ -56,7 +56,10 @@ fn main() {
 
     match start(cli) {
         Ok(code) => exit(code),
-        Err(err) => error!("{}", err),
+        Err(err) => {
+            error!("{}", err);
+            exit(1);
+        }
     }
 }
 
@@ -68,7 +71,20 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
 
     let tasks = TaskTracker::new();
 
-    let (child, stdout, stderr) = spawn_child(&cli, &tasks)?;
+    let (child, stdout, stderr) = match spawn_child(&cli, &tasks) {
+        Ok(spawned_child) => spawned_child,
+        Err(err) => {
+            if let Some(config) = error {
+                tasks.spawn(send_request(
+                    config.request_from_spawn(&mut SystemTimestamp, &err),
+                ));
+                tasks.close();
+                tasks.wait().await;
+            }
+
+            return Err(format!("could not spawn child process: {err}").into());
+        }
+    };
 
     let (log_stdout, error_stdout) = maybe_spawn_tee(stdout);
     let (log_stderr, error_stderr) = maybe_spawn_tee(stderr);
@@ -106,7 +122,7 @@ async fn start(cli: Cli) -> Result<i32, Box<dyn std::error::Error>> {
             ));
         }
     } else if let Some(error) = error {
-        tasks.spawn(send_error_request(
+        tasks.spawn(send_error_exit_request(
             error,
             exit_status,
             error_message.unwrap(),
@@ -412,7 +428,7 @@ async fn forward_signals_and_wait(mut child: Child) -> io::Result<ExitStatus> {
     }
 }
 
-async fn send_error_request(
+async fn send_error_exit_request(
     error: ErrorConfig,
     exit_status: ExitStatus,
     receiver: oneshot::Receiver<VecDeque<String>>,
@@ -425,7 +441,7 @@ async fn send_error_request(
         }
     };
 
-    send_request(error.request(&mut SystemTimestamp, &exit_status, lines)).await;
+    send_request(error.request_from_exit(&mut SystemTimestamp, &exit_status, lines)).await;
 }
 
 fn command(argv: &[String], should_stdout: bool, should_stderr: bool) -> Command {
