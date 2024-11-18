@@ -258,7 +258,8 @@ impl Cli {
         let origin = self.log_origin();
         let group = self.log.clone().unwrap_or_else(|| "process".to_string());
         let hostname = self.hostname.clone();
-        let digest: String = self.digest.clone();
+        let digest = self.digest.clone();
+        let command = self.command_as_str();
 
         LogConfig {
             api_key,
@@ -267,6 +268,7 @@ impl Cli {
             hostname,
             group,
             digest,
+            command,
         }
     }
 
@@ -277,6 +279,7 @@ impl Cli {
             let action = action.clone();
             let hostname = self.hostname.clone();
             let digest = self.digest.clone();
+            let command = self.command_as_str();
 
             ErrorConfig {
                 api_key,
@@ -284,6 +287,7 @@ impl Cli {
                 action,
                 hostname,
                 digest,
+                command,
             }
         })
     }
@@ -310,6 +314,10 @@ impl Cli {
         }
 
         self.log_origin().is_out()
+    }
+
+    fn command_as_str(&self) -> String {
+        self.command.join(" ")
     }
 }
 
@@ -398,14 +406,14 @@ mod tests {
                 None
             ),
             (
-                vec!["--no-log", "--heartbeat", "some-hearttbeat"],
+                vec!["--no-log", "--heartbeat", "some-heartbeat"],
                 None
             ),
             (
                 vec!["--no-log", "--error", "some-error"],
                 None
             )
-            ] {
+        ] {
             let cli = Cli::try_parse_from(
                 with_required_args(args)
 

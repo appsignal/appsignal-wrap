@@ -16,6 +16,7 @@ pub struct ErrorConfig {
     pub action: String,
     pub hostname: String,
     pub digest: String,
+    pub command: String,
 }
 
 impl ErrorConfig {
@@ -51,6 +52,7 @@ impl ErrorConfig {
         [
             ("hostname".to_string(), self.hostname.clone()),
             (format!("{}-digest", NAME), self.digest.clone()),
+            ("command".to_string(), self.command.clone()),
         ]
         .into()
     }
@@ -175,6 +177,7 @@ mod tests {
             hostname: "some-hostname".to_string(),
             digest: "some-digest".to_string(),
             action: "some-action".to_string(),
+            command: "some-command".to_string(),
         }
     }
 
@@ -211,6 +214,7 @@ mod tests {
                     r#"}},"#,
                     r#""tags":{{"#,
                     r#""{}-digest":"some-digest","#,
+                    r#""command":"some-command","#,
                     r#""hostname":"some-hostname""#,
                     r#"}}"#,
                     "}}"
@@ -256,6 +260,7 @@ mod tests {
                     r#"}},"#,
                     r#""tags":{{"#,
                     r#""{}-digest":"some-digest","#,
+                    r#""command":"some-command","#,
                     r#""exit_code":"42","#,
                     r#""exit_kind":"code","#,
                     r#""hostname":"some-hostname""#,
