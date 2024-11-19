@@ -12,7 +12,7 @@ if ! command -v tar >/dev/null; then
   exit 1
 fi
 
-LAST_RELEASE="0.1.1"
+LAST_RELEASE="0.2.0"
 
 VERSION="${APPSIGNAL_WRAP_VERSION:-"$LAST_RELEASE"}"
 INSTALL_FOLDER="${APPSIGNAL_WRAP_INSTALL_FOLDER:-"/usr/local/bin"}"

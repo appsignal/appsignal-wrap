@@ -1,5 +1,54 @@
 # `appsignal-wrap` changelog
 
+## 0.2.0
+
+_Published on 2024-11-19._
+
+### Added
+
+- Add command as error tag and log attribute. When reporting log lines or errors, add the command that was used to spawn the child process (or to attempt to) as a tag or attribute. (patch [90668c3](https://github.com/appsignal/appsignal-wrap/commit/90668c315f3736f75f99028b66e7814429064933))
+- Report exit failures as errors to AppSignal. Use the `--error` command-line option to report an error to AppSignal when the command exits with a non-zero status code, or when the command fails to start:
+
+  ```
+  appsignal-wrap --error backup -- ./backup.sh
+  ```
+
+  The name given as the value to the `--error` command-line option will be used to group the errors in AppSignal.
+
+  (patch [90668c3](https://github.com/appsignal/appsignal-wrap/commit/90668c315f3736f75f99028b66e7814429064933))
+
+### Changed
+
+- Add a required positional argument for the name. This name is used as the identifier for cron and heartbeat check-ins, the group for logs, and the action name for errors.
+
+  This avoids repetition of command-line parameters that represent the name:
+
+  ```sh
+  # Before:
+  appsignal-wrap \
+    --cron backup \
+    --error backup \
+    --log backup \
+    -- ./backup.sh
+
+  # After:
+  appsignal-wrap backup \
+    --cron \
+    -- ./backup.sh
+  ```
+
+  It is still possible to override the name for a specific purpose by using the `--log GROUP` and `--error ACTION` arguments, or by passing an identifier to either `--cron` or `--heartbeat`:
+
+  ```sh
+  appsignal-wrap mysql \
+    --heartbeat db
+    -- mysqld
+  ```
+
+  Additionally, error sending is now enabled by default (use `--no-error` to disable it) and using both cron and heartbeat check-ins in the same invocation is no longer allowed.
+
+  (minor [90668c3](https://github.com/appsignal/appsignal-wrap/commit/90668c315f3736f75f99028b66e7814429064933))
+
 ## 0.1.1
 
 _Published on 2024-11-07._
