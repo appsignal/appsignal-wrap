@@ -65,10 +65,10 @@ You can disable sending errors entirely by using the `--no-error` command-line o
 Use the `--heartbeat` flag to send heartbeat check-ins continuously to AppSignal, for as long as the process is running. This allows you to track that certain processes are always up:
 
 ```sh
-appsignal-wrap worker --heartbeat -- bundle exec ./worker.rb
+appsignal-wrap worker --heartbeat -- bundle exec ruby ./worker.rb
 ```
 
-The above command will execute `bundle exec ./worker.rb`, and send heartbeat check-ins to AppSignal with the `worker` check-in identifier continuously, for as long as the process is running.
+The above command will execute `bundle exec ruby ./worker.rb`, and send heartbeat check-ins to AppSignal with the `worker` check-in identifier continuously, for as long as the process is running.
 
 It will also send logs and report errors, as described in previous sections. To only send heartbeat check-ins, use `--no-log` and `--no-error`.
 
@@ -80,7 +80,7 @@ Use the `--cron` flag to send a start cron check-in to AppSignal when the proces
 appsignal-wrap sync_customers --cron -- python ./sync_customers.py
 ```
 
-The above command will execute `bundle exec ./worker.rb`, send a start cron check-in to AppSignal with the `sync_customers` check-in identifier if it starts successfully, and send a finish cron check-in to AppSignal if it finishes with a success exit code.
+The above command will execute `python ./sync_customers.py`, send a start cron check-in to AppSignal with the `sync_customers` check-in identifier if it starts successfully, and send a finish cron check-in to AppSignal if it finishes with a success exit code.
 
 It will also send logs and report errors, as described in previous sections. To only send cron check-ins, use `--no-log` and `--no-error`.
 
