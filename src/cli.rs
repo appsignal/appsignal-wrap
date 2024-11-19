@@ -20,10 +20,17 @@ use clap::Parser;
 #[derive(Debug, Parser)]
 #[command(version)]
 pub struct Cli {
-    /// The AppSignal *app-level* push API key.
+    /// The AppSignal *app-level* push API key. Required.
     ///
-    /// Required unless a log source API key is provided (see `--log-source`)
-    /// and no check-ins are being sent (see `--cron` and `--heartbeat`)
+    /// This is the app-level push API key for the AppSignal application
+    /// that logs, errors and check-ins will be sent to. This is *not* the
+    /// organization-level API key.
+    ///
+    /// You can find these keys in the AppSignal dashboard:
+    /// https://appsignal.com/redirect-to/organization?to=admin/api_keys
+    ///
+    /// Required unless a log source API key is provided using the
+    /// `--log-source` option, and no check-ins or errors are being sent.
     #[arg(
         long,
         env = "APPSIGNAL_APP_PUSH_API_KEY",
@@ -32,22 +39,107 @@ pub struct Cli {
     )]
     api_key: Option<String>,
 
-    /// The log group to use to send logs.
+    /// The name to use to send check-ins, logs and errors to AppSignal.
+    /// Required.
     ///
-    /// If this option is not set, logs will be sent to the "process"
-    /// log group.
+    /// This value is used as the identifier for cron or heartbeat
+    /// check-ins, if either the `--cron` or `--heartbeat` option is set, as
+    /// the group for logs, and as the action for errors.
+    ///
+    /// This name should represent a *kind* of process, not be unique to
+    /// the specific invocation of the process. See the `--digest` option for
+    /// a unique identifier for this invocation.
+    ///
+    /// The `--cron`, `--heartbeat`, `--log` and `--error` options can be
+    /// used to override this value for each use case.
+    #[arg(index = 1, value_name = "NAME", required = true)]
+    name: String,
+
+    /// The command to execute. Required.
+    ///
+    ///
+    #[arg(index = 2, allow_hyphen_values = true, last = true, required = true)]
+    pub command: Vec<String>,
+
+    /// Send heartbeat check-ins.
+    ///
+    /// If this option is set, a heartbeat check-in will be sent two times
+    /// per minute.
+    ///
+    /// Optionally, the identifier for the check-in can be provided. If
+    /// omitted, the name given as the first argument will be used.
+    #[arg(
+        long,
+        value_name = "IDENTIFIER",
+        requires = "api_key",
+        conflicts_with = "cron"
+    )]
+    heartbeat: Option<Option<String>>,
+
+    /// Send cron check-ins.
+    ///
+    /// If this option is set, a start cron check-in will be sent when the
+    /// process starts, and if the wrapped process finishes with a success
+    /// exit code, a finish cron check-in will be sent when the process
+    /// finishes.
+    ///
+    /// Optionally, the identifier for the check-in can be provided. If
+    /// omitted, the name given as the first argument will be used.
+    #[arg(
+        long,
+        value_name = "IDENTIFIER",
+        requires = "api_key",
+        conflicts_with = "heartbeat"
+    )]
+    cron: Option<Option<String>>,
+
+    /// Do not send logs.
+    ///
+    /// If this option is set, no logs will be sent to AppSignal.
     ///
     /// By default, both standard output and standard error will be sent as
-    /// logs. Use the --no-stdout and --no-stderr options to disable
+    /// logs. Use the `--no-stdout` and `--no-stderr` options to disable
+    /// sending standard output and standard error respectively.
+    #[arg(long)]
+    no_log: bool,
+
+    /// Do not send errors.
+    ///
+    /// If this option is set, no errors will be sent to AppSignal.
+    ///
+    /// By default, an error will be sent to AppSignal if the process fails to
+    /// start, or if the process finishes with a non-zero exit code.
+    ///
+    /// The error message sent to AppSignal will include the last lines of
+    /// standard output and standard error, unless the `--no-stdout` or
+    /// `--no-stderr` options are set.
+    #[arg(long)]
+    no_error: bool,
+
+    /// Override the log group to use to send logs.
+    ///
+    /// If this option is not set, the name given as the first argument will
+    /// be used as the log group.
+    ///
+    /// By default, both standard output and standard error will be sent as
+    /// logs. Use the `--no-stdout` and `--no-stderr` options to disable
     /// sending standard output and standard error respectively, or use the
-    /// --no-log option to disable sending logs entirely.
+    /// `--no-log` option to disable sending logs entirely.
     #[arg(long, value_name = "GROUP")]
     log: Option<String>,
 
-    /// The action name to use to group errors by.
+    /// Override the action name to use to group errors.
     ///
-    /// If this option is not set, errors will not be sent to AppSignal when
-    /// a process exits with a non-zero exit code.
+    /// If this option is not set, the name given as the first argument will
+    /// be used as the action name.
+    ///
+    /// By default, an error will be sent to AppSignal if the process fails to
+    /// start, or if Use the `--no-error` option to disable sending errors to
+    /// AppSignal.
+    ///
+    /// The error message sent to AppSignal will include the last lines of
+    /// standard output and standard error. Use the `--no-stdout` or
+    /// `--no-stderr` options are set.
     #[arg(long, value_name = "ACTION", requires = "api_key")]
     error: Option<String>,
 
@@ -55,7 +147,7 @@ pub struct Cli {
     ///
     /// If this option is not set, logs will be sent to the default
     /// "application" log source for the application specified by the
-    /// app-level push API key.
+    /// app-level push API key -- see the `--api-key` option.
     #[arg(
         long,
         env = "APPSIGNAL_LOG_SOURCE_API_KEY",
@@ -63,45 +155,19 @@ pub struct Cli {
     )]
     log_source: Option<String>,
 
-    /// The identifier to use to send heartbeat check-ins.
-    ///
-    /// If this option is set, a heartbeat check-in will be sent two times
-    /// per minute.
-    #[arg(long, value_name = "IDENTIFIER", requires = "api_key")]
-    heartbeat: Option<String>,
-
-    /// The identifier to use to send cron check-ins.
-    ///
-    /// If this option is set, a start cron check-in will be sent when the
-    /// process starts, and if the wrapped process finishes with a success
-    /// exit code, a finish cron check-in will be sent when the process
-    /// finishes.
-    #[arg(long, value_name = "IDENTIFIER", requires = "api_key")]
-    cron: Option<String>,
-
-    /// Do not send standard output.
+    /// Do not use standard output in logs or error messages.
     ///
     /// Do not send standard output as logs, and do not use the last
-    /// lines of standard output as part of the error message when
-    /// `--error` is set.
+    /// lines of standard output as part of the error message.
     #[arg(long)]
     no_stdout: bool,
 
-    /// Do not send standard error.
+    /// Do not use standard error in logs or error messages.
     ///
     /// Do not send standard error as logs, and do not use the last
-    /// lines of standard error as part of the error message when
-    /// `--error` is set.
+    /// lines of standard error as part of the error message.
     #[arg(long)]
     no_stderr: bool,
-
-    /// Do not send any logs.
-    #[arg(long)]
-    no_log: bool,
-
-    /// The command to execute.
-    #[arg(allow_hyphen_values = true, last = true, required = true)]
-    pub command: Vec<String>,
 
     /// The AppSignal public endpoint to use.
     #[arg(
@@ -113,7 +179,11 @@ pub struct Cli {
     )]
     endpoint: String,
 
-    /// The hostname to report when sending logs.
+    /// The hostname to report. Determined automatically.
+    ///
+    /// This value will be used as the hostname when sending logs, and added
+    /// as a tag to errors. We attempt to determine the hostname automatically,
+    /// but this configuration option can be used to override it.
     #[arg(
         long,
         env = "APPSIGNAL_HOSTNAME",
@@ -122,7 +192,8 @@ pub struct Cli {
     hostname: String,
 
     /// The digest to uniquely identify this invocation of the process.
-    /// Used in cron check-ins as a digest, and in logs as an attribute.
+    /// Used in cron check-ins as a digest, in logs as an attribute, and in
+    /// errors as a tag.
     /// Unless overriden, this value is automatically set to a random value.
     #[arg(
       long,
@@ -176,22 +247,37 @@ impl Cli {
         }
     }
 
-    fn no_log_and_no_data_warning(&self) -> Option<String> {
-        let no_checkins: bool = self.cron.is_none() && self.heartbeat.is_none();
-        let no_errors: bool = self.error.is_none();
+    fn error_and_no_error_warning(&self) -> Option<String> {
+        if self.no_error && self.error.is_some() {
+            return Some(
+                "using --no-error alongside --error; \
+                no errors will be sent to AppSignal"
+                    .to_string(),
+            );
+        };
 
-        if no_checkins && no_errors {
+        None
+    }
+
+    fn no_log_and_no_data_warning(&self) -> Option<String> {
+        if !self.no_error {
+            return None;
+        }
+
+        let no_checkins: bool = self.cron.is_none() && self.heartbeat.is_none();
+
+        if no_checkins {
             let using: Option<&str> = if self.no_log {
-                Some("--no-log")
+                Some("--no-log and --no-error")
             } else if self.no_stdout && self.no_stderr {
-                Some("--no-stdout and --no-stderr")
+                Some("--no-stdout, --no-stderr and --no-error")
             } else {
                 None
             };
 
             if let Some(using) = using {
                 return Some(format!(
-                    "using {using} without either --cron, --heartbeat or --error; \
+                    "using {using} without either --cron or --heartbeat; \
                     no data will be sent to AppSignal"
                 ));
             }
@@ -204,6 +290,10 @@ impl Cli {
         let mut warnings = Vec::new();
 
         if let Some(warning) = self.log_and_no_log_warning() {
+            warnings.push(warning);
+        }
+
+        if let Some(warning) = self.error_and_no_error_warning() {
             warnings.push(warning);
         }
 
@@ -226,7 +316,7 @@ impl Cli {
                 check_in: CheckInConfig {
                     api_key: api_key.clone(),
                     endpoint: self.endpoint.clone(),
-                    identifier: identifier.clone(),
+                    identifier: identifier.as_ref().unwrap_or(&self.name).clone(),
                 },
                 digest: self.digest.clone(),
             }),
@@ -240,7 +330,7 @@ impl Cli {
                 check_in: CheckInConfig {
                     api_key: api_key.clone(),
                     endpoint: self.endpoint.clone(),
-                    identifier: identifier.clone(),
+                    identifier: identifier.as_ref().unwrap_or(&self.name).clone(),
                 },
             }),
             _ => None,
@@ -256,7 +346,7 @@ impl Cli {
             .clone();
         let endpoint = self.endpoint.clone();
         let origin = self.log_origin();
-        let group = self.log.clone().unwrap_or_else(|| "process".to_string());
+        let group = self.log.as_ref().unwrap_or(&self.name).clone();
         let hostname = self.hostname.clone();
         let digest = self.digest.clone();
         let command = self.command_as_str();
@@ -273,22 +363,24 @@ impl Cli {
     }
 
     pub fn error(&self) -> Option<ErrorConfig> {
-        self.error.as_ref().map(|action| {
-            let api_key = self.api_key.as_ref().unwrap().clone();
-            let endpoint = self.endpoint.clone();
-            let action = action.clone();
-            let hostname = self.hostname.clone();
-            let digest = self.digest.clone();
-            let command = self.command_as_str();
+        if self.no_error {
+            return None;
+        }
 
-            ErrorConfig {
-                api_key,
-                endpoint,
-                action,
-                hostname,
-                digest,
-                command,
-            }
+        let api_key = self.api_key.as_ref().unwrap().clone();
+        let endpoint = self.endpoint.clone();
+        let action = self.error.as_ref().unwrap_or(&self.name).clone();
+        let hostname = self.hostname.clone();
+        let digest = self.digest.clone();
+        let command = self.command_as_str();
+
+        Some(ErrorConfig {
+            api_key,
+            endpoint,
+            action,
+            hostname,
+            digest,
+            command,
         })
     }
 
@@ -328,7 +420,7 @@ mod tests {
 
     // These arguments are required -- without them, the CLI parser will fail.
     fn with_required_args(args: Vec<&str>) -> Vec<&str> {
-        let first_args: Vec<&str> = vec![NAME, "--api-key", "some-api-key"];
+        let first_args: Vec<&str> = vec![NAME, "some-name", "--api-key", "some-api-key"];
         let last_args: Vec<&str> = vec!["--", "true"];
         first_args
             .into_iter()
@@ -387,32 +479,47 @@ mod tests {
     }
 
     #[test]
+    fn cli_warnings_error_and_no_error() {
+        let args = vec!["--error", "some-action", "--no-error"];
+        let cli =
+            Cli::try_parse_from(with_required_args(args)).expect("failed to parse CLI arguments");
+
+        let warnings = cli.warnings();
+
+        assert!(warnings.len() == 1);
+        assert_eq!(
+            warnings[0],
+            "using --no-error alongside --error; no errors will be sent to AppSignal"
+        );
+    }
+
+    #[test]
     fn cli_warnings_no_log_and_no_data() {
         for (args, warning) in [
             (
+                vec!["--no-log", "--no-error"],
+                Some("using --no-log and --no-error without either --cron or --heartbeat; no data will be sent to AppSignal")
+            ),
+            (
+                vec!["--no-stdout", "--no-stderr", "--no-error"],
+                Some("using --no-stdout, --no-stderr and --no-error without either --cron or --heartbeat; no data will be sent to AppSignal")
+            ),
+            (
+                vec!["--no-log", "--no-stdout", "--no-stderr", "--no-error"],
+                Some("using --no-log and --no-error without either --cron or --heartbeat; no data will be sent to AppSignal")
+            ),
+            (
+                vec!["--no-log", "--no-error", "--cron"],
+                None
+            ),
+            (
+                vec!["--no-log", "--no-error", "--heartbeat"],
+                None
+            ),
+            (
                 vec!["--no-log"],
-                Some("using --no-log without either --cron, --heartbeat or --error; no data will be sent to AppSignal")
-            ),
-            (
-                vec!["--no-stdout", "--no-stderr"],
-                Some("using --no-stdout and --no-stderr without either --cron, --heartbeat or --error; no data will be sent to AppSignal")
-            ),
-            (
-                vec!["--no-log", "--no-stdout", "--no-stderr"],
-                Some("using --no-log without either --cron, --heartbeat or --error; no data will be sent to AppSignal")
-            ),
-            (
-                vec!["--no-log", "--cron", "some-cron"],
                 None
             ),
-            (
-                vec!["--no-log", "--heartbeat", "some-heartbeat"],
-                None
-            ),
-            (
-                vec!["--no-log", "--error", "some-error"],
-                None
-            )
         ] {
             let cli = Cli::try_parse_from(
                 with_required_args(args)
@@ -470,27 +577,54 @@ mod tests {
     }
 
     #[test]
+    fn cli_error_config() {
+        for (args, error) in [
+            (vec!["--no-error"], None),
+            (vec!["--error", "some-action"], Some("some-action")),
+            (vec![], Some("some-name")),
+        ] {
+            let cli = Cli::try_parse_from(with_required_args(
+                args.into_iter()
+                    .chain(["--hostname", "some-hostname", "--digest", "some-digest"].into_iter())
+                    .collect(),
+            ))
+            .expect("failed to parse CLI arguments");
+
+            let error_config = cli.error();
+
+            if let Some(action) = error {
+                let error_config = error_config.expect("expected error config");
+                assert_eq!(error_config.action, action);
+                assert_eq!(error_config.api_key, "some-api-key");
+                assert_eq!(error_config.endpoint, "https://appsignal-endpoint.net");
+                assert_eq!(error_config.hostname, "some-hostname");
+                assert_eq!(error_config.digest, "some-digest");
+            } else {
+                assert!(error_config.is_none());
+            }
+        }
+    }
+
+    #[test]
     fn cli_check_in_config() {
         for (args, cron, heartbeat) in [
             (
-                vec![
-                    "--cron",
-                    "some-cron",
-                    "--digest",
-                    "some-digest",
-                    "--heartbeat",
-                    "some-heartbeat",
-                ],
-                true,
-                true,
+                vec!["--cron", "some-cron", "--digest", "some-digest"],
+                Some("some-cron"),
+                None,
             ),
             (
-                vec!["--cron", "some-cron", "--digest", "some-digest"],
-                true,
-                false,
+                vec!["--heartbeat", "some-heartbeat"],
+                None,
+                Some("some-heartbeat"),
             ),
-            (vec!["--heartbeat", "some-heartbeat"], false, true),
-            (vec![], false, false),
+            (
+                vec!["--cron", "--digest", "some-digest"],
+                Some("some-name"),
+                None,
+            ),
+            (vec!["--heartbeat"], None, Some("some-name")),
+            (vec![], None, None),
         ] {
             let cli = Cli::try_parse_from(with_required_args(args))
                 .expect("failed to parse CLI arguments");
@@ -498,9 +632,9 @@ mod tests {
             let cron_config = cli.cron();
             let heartbeat_config = cli.heartbeat();
 
-            if cron {
+            if let Some(identifier) = cron {
                 let cron_config = cron_config.expect("expected cron config");
-                assert_eq!(cron_config.check_in.identifier, "some-cron");
+                assert_eq!(cron_config.check_in.identifier, identifier);
                 assert_eq!(cron_config.check_in.api_key, "some-api-key");
                 assert_eq!(
                     cron_config.check_in.endpoint,
@@ -511,9 +645,9 @@ mod tests {
                 assert!(cron_config.is_none());
             }
 
-            if heartbeat {
+            if let Some(identifier) = heartbeat {
                 let heartbeat_config = heartbeat_config.expect("expected heartbeat config");
-                assert_eq!(heartbeat_config.check_in.identifier, "some-heartbeat");
+                assert_eq!(heartbeat_config.check_in.identifier, identifier);
                 assert_eq!(heartbeat_config.check_in.api_key, "some-api-key");
                 assert_eq!(
                     heartbeat_config.check_in.endpoint,

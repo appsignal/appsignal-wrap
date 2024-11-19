@@ -67,6 +67,8 @@ pub struct ErrorBody {
     pub tags: BTreeMap<String, String>,
 }
 
+const NAMESPACE: &str = "process";
+
 impl ErrorBody {
     pub fn new(
         config: &ErrorConfig,
@@ -77,7 +79,7 @@ impl ErrorBody {
         ErrorBody {
             timestamp: timestamp.as_secs(),
             action: config.action.clone(),
-            namespace: "process".to_string(),
+            namespace: NAMESPACE.to_string(),
             error,
             tags: tags.into_iter().chain(config.tags()).collect(),
         }
