@@ -63,6 +63,7 @@ if [ "$OS" = "linux" ]; then
     EXTRA="musl"
     EXTRA_FRIENDLY="musl"
   else
+    # Do not add "gnu" to the friendly triple, as it is the assumed default.
     EXTRA="gnu"
   fi
 fi
@@ -74,18 +75,20 @@ else
 fi
 
 if [ -z "$EXTRA_FRIENDLY" ]; then
-  FRIENDLY="${OS_FRIENDLY} (${ARCH_FRIENDLY})"
+  TRIPLE_FRIENDLY="${OS_FRIENDLY} (${ARCH_FRIENDLY})"
 else
-  FRIENDLY="${OS_FRIENDLY} (${ARCH_FRIENDLY}, ${EXTRA_FRIENDLY})"
+  TRIPLE_FRIENDLY="${OS_FRIENDLY} (${ARCH_FRIENDLY}, ${EXTRA_FRIENDLY})"
 fi
-
-echo "Downloading $VERSION version of the \`appsignal-wrap\` binary for $FRIENDLY..."
 
 if [ "$VERSION" = "latest" ]; then
   URL="https://github.com/appsignal/appsignal-wrap/releases/latest/download/$TRIPLE.tar.gz"
+  VERSION_FRIENDLY="latest version"
 else
   URL="https://github.com/appsignal/appsignal-wrap/releases/download/v$VERSION/$TRIPLE.tar.gz"
+  VERSION_FRIENDLY="version $VERSION"
 fi
+
+echo "Downloading $VERSION_FRIENDLY of the \`appsignal-wrap\` binary for $TRIPLE_FRIENDLY..."
 
 curl --progress-bar -SL "$URL" | tar -C "$INSTALL_FOLDER" -xz
 
