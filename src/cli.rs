@@ -176,10 +176,11 @@ impl Cli {
         }
     }
 
-    fn no_log_and_no_checkins_warning(&self) -> Option<String> {
+    fn no_log_and_no_data_warning(&self) -> Option<String> {
         let no_checkins: bool = self.cron.is_none() && self.heartbeat.is_none();
+        let no_errors: bool = self.error.is_none();
 
-        if no_checkins {
+        if no_checkins && no_errors {
             let using: Option<&str> = if self.no_log {
                 Some("--no-log")
             } else if self.no_stdout && self.no_stderr {
@@ -190,7 +191,7 @@ impl Cli {
 
             if let Some(using) = using {
                 return Some(format!(
-                    "using {using} without either --cron or --heartbeat; \
+                    "using {using} without either --cron, --heartbeat or --error; \
                     no data will be sent to AppSignal"
                 ));
             }
@@ -206,7 +207,7 @@ impl Cli {
             warnings.push(warning);
         }
 
-        if let Some(warning) = self.no_log_and_no_checkins_warning() {
+        if let Some(warning) = self.no_log_and_no_data_warning() {
             warnings.push(warning);
         }
 
@@ -257,7 +258,8 @@ impl Cli {
         let origin = self.log_origin();
         let group = self.log.clone().unwrap_or_else(|| "process".to_string());
         let hostname = self.hostname.clone();
-        let digest: String = self.digest.clone();
+        let digest = self.digest.clone();
+        let command = self.command_as_str();
 
         LogConfig {
             api_key,
@@ -266,6 +268,7 @@ impl Cli {
             hostname,
             group,
             digest,
+            command,
         }
     }
 
@@ -276,6 +279,7 @@ impl Cli {
             let action = action.clone();
             let hostname = self.hostname.clone();
             let digest = self.digest.clone();
+            let command = self.command_as_str();
 
             ErrorConfig {
                 api_key,
@@ -283,6 +287,7 @@ impl Cli {
                 action,
                 hostname,
                 digest,
+                command,
             }
         })
     }
@@ -309,6 +314,10 @@ impl Cli {
         }
 
         self.log_origin().is_out()
+    }
+
+    fn command_as_str(&self) -> String {
+        self.command.join(" ")
     }
 }
 
@@ -378,15 +387,33 @@ mod tests {
     }
 
     #[test]
-    fn cli_warnings_no_log_and_no_checkins() {
-        for (args, warning) in [(
+    fn cli_warnings_no_log_and_no_data() {
+        for (args, warning) in [
+            (
                 vec!["--no-log"],
-                "using --no-log without either --cron or --heartbeat; no data will be sent to AppSignal"
+                Some("using --no-log without either --cron, --heartbeat or --error; no data will be sent to AppSignal")
             ),
             (
                 vec!["--no-stdout", "--no-stderr"],
-                "using --no-stdout and --no-stderr without either --cron or --heartbeat; no data will be sent to AppSignal"
-            )] {
+                Some("using --no-stdout and --no-stderr without either --cron, --heartbeat or --error; no data will be sent to AppSignal")
+            ),
+            (
+                vec!["--no-log", "--no-stdout", "--no-stderr"],
+                Some("using --no-log without either --cron, --heartbeat or --error; no data will be sent to AppSignal")
+            ),
+            (
+                vec!["--no-log", "--cron", "some-cron"],
+                None
+            ),
+            (
+                vec!["--no-log", "--heartbeat", "some-heartbeat"],
+                None
+            ),
+            (
+                vec!["--no-log", "--error", "some-error"],
+                None
+            )
+        ] {
             let cli = Cli::try_parse_from(
                 with_required_args(args)
 
@@ -394,8 +421,12 @@ mod tests {
 
             let warnings = cli.warnings();
 
-            assert_eq!(warnings.len(), 1);
-            assert_eq!(warnings[0], warning);
+            if let Some(warning) = warning {
+                assert_eq!(warnings.len(), 1);
+                assert_eq!(warnings[0], warning);
+            } else {
+                assert!(warnings.is_empty());
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 
@@ -14,6 +14,7 @@ pub struct LogConfig {
     pub group: String,
     pub origin: LogOrigin,
     pub digest: String,
+    pub command: String,
 }
 
 impl LogConfig {
@@ -26,6 +27,14 @@ impl LogConfig {
             .header("Content-Type", "application/x-ndjson")
             .body(ndjson::to_string(messages).expect("failed to serialize log messages"))
             .build()
+    }
+
+    fn tags(&self) -> BTreeMap<String, String> {
+        [
+            (format!("{}-digest", NAME), self.digest.clone()),
+            ("command".to_string(), self.command.clone()),
+        ]
+        .into()
     }
 }
 
@@ -67,8 +76,8 @@ pub struct LogMessage {
     severity: LogSeverity,
     message: String,
     hostname: String,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    attributes: HashMap<String, String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    attributes: BTreeMap<String, String>,
 }
 
 impl LogMessage {
@@ -78,17 +87,13 @@ impl LogMessage {
         severity: LogSeverity,
         message: String,
     ) -> Self {
-        let mut attributes = HashMap::new();
-
-        attributes.insert(format!("{}-digest", NAME), config.digest.clone());
-
         Self {
             group: config.group.clone(),
             timestamp: timestamp.as_rfc3339(),
             severity,
             message,
             hostname: config.hostname.clone(),
-            attributes,
+            attributes: config.tags(),
         }
     }
 }
@@ -113,6 +118,7 @@ mod tests {
             group: "some-group".to_string(),
             origin: LogOrigin::All,
             digest: "some-digest".to_string(),
+            command: "some-command".to_string(),
         }
     }
 
@@ -153,7 +159,10 @@ mod tests {
                     r#""severity":"info","#,
                     r#""message":"first-message","#,
                     r#""hostname":"some-hostname","#,
-                    r#""attributes":{{"{}-digest":"some-digest"}}"#,
+                    r#""attributes":{{"#,
+                    r#""{}-digest":"some-digest","#,
+                    r#""command":"some-command""#,
+                    r#"}}"#,
                     "}}\n",
                     "{{",
                     r#""group":"some-group","#,
@@ -161,7 +170,10 @@ mod tests {
                     r#""severity":"error","#,
                     r#""message":"second-message","#,
                     r#""hostname":"some-hostname","#,
-                    r#""attributes":{{"{}-digest":"some-digest"}}"#,
+                    r#""attributes":{{"#,
+                    r#""{}-digest":"some-digest","#,
+                    r#""command":"some-command""#,
+                    r#"}}"#,
                     "}}\n"
                 ),
                 EXPECTED_RFC3339, NAME, EXPECTED_RFC3339, NAME
