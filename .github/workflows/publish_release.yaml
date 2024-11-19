@@ -70,6 +70,7 @@ jobs:
             'release/x86_64-unknown-linux-gnu.tar.gz#Linux (x86_64)' \
             'release/x86_64-unknown-linux-musl.tar.gz#Linux (x86_64, musl)' \
             'release/aarch64-unknown-linux-gnu.tar.gz#Linux (arm64)' \
-            'release/aarch64-unknown-linux-musl.tar.gz#Linux (arm64, musl)'
+            'release/aarch64-unknown-linux-musl.tar.gz#Linux (arm64, musl)' \
+            'release/install.sh#Installer script'
         env:
           GH_TOKEN: ${{github.token}}

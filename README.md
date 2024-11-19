@@ -11,7 +11,7 @@
 The easiest way to get `appsignal-wrap` in your machine is to run our installation one-liner:
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/appsignal/appsignal-wrap/refs/heads/main/install.sh | sh
+curl -sSL https://github.com/appsignal/appsignal-wrap/releases/latest/download/install.sh | sh
 ```
 
 You'll need to run it with super-user privileges -- if you're not running this as root, prefix it with `sudo`.
