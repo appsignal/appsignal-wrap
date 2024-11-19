@@ -12,7 +12,9 @@ if ! command -v tar >/dev/null; then
   exit 1
 fi
 
-VERSION="${APPSIGNAL_WRAP_VERSION:-"latest"}"
+LAST_RELEASE="0.1.1"
+
+VERSION="${APPSIGNAL_WRAP_VERSION:-"$LAST_RELEASE"}"
 INSTALL_FOLDER="${APPSIGNAL_WRAP_INSTALL_FOLDER:-"/usr/local/bin"}"
 
 # Expected values are "linux" or "darwin".
