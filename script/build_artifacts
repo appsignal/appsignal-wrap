@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eu
+
 rm -rf release
 
 script/build_artifact x86_64-apple-darwin
