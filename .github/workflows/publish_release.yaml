@@ -6,8 +6,6 @@ on:
 env:
   PUBLISH_GIT_USERNAME: "AppSignal release bot"
   PUBLISH_GIT_EMAIL: "support+build-sign@appsignal.com"
-  PUBLISH_GIT_SSH_PATH: "/home/runner/.ssh"
-  PUBLISH_GIT_SIGN_KEY_PATH: "/home/runner/.ssh/sign_key"
 
 jobs:
   publish:
@@ -28,6 +26,8 @@ jobs:
 
       - name: "Configure Git"
         run: |
+          export PUBLISH_GIT_SSH_PATH="$HOME/.ssh"
+          export PUBLISH_GIT_SIGN_KEY_PATH="$HOME/.ssh/sign_key"
           mkdir -p "$PUBLISH_GIT_SSH_PATH"
           echo "${{secrets.PUBLISH_GIT_SIGN_KEY}}" > "$PUBLISH_GIT_SIGN_KEY_PATH"
           echo "${{secrets.PUBLISH_GIT_SIGN_PUBLIC_KEY}}" > "$PUBLISH_GIT_SIGN_KEY_PATH.pub"
