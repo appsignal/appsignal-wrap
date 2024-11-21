@@ -2,8 +2,10 @@
 
 rm -rf release
 
+script/build_artifact x86_64-apple-darwin
 script/build_artifact x86_64-unknown-linux-gnu
 script/build_artifact x86_64-unknown-linux-musl
+script/build_artifact aarch64-apple-darwin
 script/build_artifact aarch64-unknown-linux-gnu
 script/build_artifact aarch64-unknown-linux-musl
 

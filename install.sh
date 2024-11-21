@@ -12,6 +12,8 @@ if ! command -v tar >/dev/null; then
   exit 1
 fi
 
+# This value is automatically updated during the release process;
+# see `script/write_version`.
 LAST_RELEASE="0.2.0"
 
 VERSION="${APPSIGNAL_WRAP_VERSION:-"$LAST_RELEASE"}"
@@ -20,24 +22,20 @@ INSTALL_FOLDER="${APPSIGNAL_WRAP_INSTALL_FOLDER:-"/usr/local/bin"}"
 # Expected values are "linux" or "darwin".
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 
-if [ "$OS" != "linux" ]; then
-  echo "Error: Unsupported OS: $OS"
-  exit 1
-fi
-
 if [ "$OS" = "linux" ]; then
   OS_FRIENDLY="Linux"
   VENDOR="unknown"
+elif [ "$OS" = "darwin" ]; then
+  OS_FRIENDLY="macOS"
+  VENDOR="apple"
+else
+  echo "Error: Unsupported OS: $OS"
+  exit 1
 fi
 
 # Expected values are "x86_64", "aarch64" or "arm64".
 ARCH="$(uname -m)"
 ARCH_FRIENDLY="$ARCH"
-
-if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "arm64" ] && [ "$ARCH" != "aarch64" ]; then
-  echo "Error: Unsupported architecture: $ARCH"
-  exit 1
-fi
 
 # Rename "arm64" to "aarch64" to match the naming convention used by the Rust
 # toolchain target triples.
@@ -48,6 +46,11 @@ fi
 # Rename "aarch64" to "arm64" for the user-friendly architecture name.
 if [ "$ARCH" = "aarch64" ]; then
   ARCH_FRIENDLY="arm64"
+fi
+
+if [ "$ARCH" != "x86_64" ] && [ "$ARCH" != "aarch64" ]; then
+  echo "Error: Unsupported architecture: $ARCH"
+  exit 1
 fi
 
 EXTRA=""

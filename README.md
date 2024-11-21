@@ -16,7 +16,7 @@ curl -sSL https://github.com/appsignal/appsignal-wrap/releases/latest/download/i
 
 You'll need to run it with super-user privileges -- if you're not running this as root, prefix it with `sudo`.
 
-Currently, `appsignal-wrap` is only supported for Linux, in the x86_64 and ARM64 architectures. Linux distributions based on musl, such as Alpine, are also supported.
+`appsignal-wrap` is only supported for Linux and macOS, in the x86_64 (Intel) and arm64 (Apple Silicon) architectures. Linux distributions based on musl, such as Alpine, are also supported.
 
 Not a fan of `curl | sh` one-liners? Download the binary for your operating system and architecture [from our latest release](https://github.com/appsignal/appsignal-wrap/releases/latest/).
 
