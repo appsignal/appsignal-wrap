@@ -30,6 +30,14 @@ jobs:
     steps:
       - name: "Checkout the project"
         uses: actions/checkout@v4
+        with:
+          path: "main"
+
+      - name: "Checkout Mono"
+        uses: actions/checkout@v4
+        with:
+          repository: "appsignal/mono"
+          path: "mono"
 
       - name: "Install Cross"
         run: |
@@ -47,10 +55,19 @@ jobs:
       # download the target for their architecture.
       - name: "Install macOS architecture target"
         if: matrix.runner == 'macos-14'
+        working-directory: "./main"
         run: |
           rustup target add "${{matrix.target}}"
 
+      # The version number needs to be written to the project's `Cargo.toml`
+      # file before building the release.
+      - name: "Write new version number"
+        working-directory: "./main"
+        run: |
+          ../mono/bin/mono publish --no-git --no-package-push --yes
+
       - name: "Build artifact"
+        working-directory: "./main"
         run: |
           script/build_artifact "${{matrix.target}}"
 
@@ -60,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: "${{matrix.target}}"
-          path: "release/${{matrix.target}}.tar.gz"
+          path: "main/release/${{matrix.target}}.tar.gz"
           retention-days: 1
           if-no-files-found: error
 
