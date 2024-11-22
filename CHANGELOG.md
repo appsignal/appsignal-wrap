@@ -1,5 +1,17 @@
 # `appsignal-wrap` changelog
 
+## 0.2.1
+
+_Published on 2024-11-22._
+
+### Added
+
+- Release macOS builds for Apple Silicon (arm64) and Intel (x86_64).
+
+  Using these builds is discouraged in production environments.
+
+  (patch [856b733](https://github.com/appsignal/appsignal-wrap/commit/856b7339f1b9a5cde85d41ad9bb1ffde99b27357))
+
 ## 0.2.0
 
 _Published on 2024-11-19._
