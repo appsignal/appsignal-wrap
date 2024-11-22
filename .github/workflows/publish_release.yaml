@@ -8,9 +8,60 @@ env:
   PUBLISH_GIT_EMAIL: "support+build-sign@appsignal.com"
 
 jobs:
+  build:
+    name: "Build the release"
+    runs-on: ${{matrix.runner}}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            target: "x86_64-unknown-linux-gnu"
+          - runner: ubuntu-22.04
+            target: "x86_64-unknown-linux-musl"
+          - runner: ubuntu-22.04
+            target: "aarch64-unknown-linux-gnu"
+          - runner: ubuntu-22.04
+            target: "aarch64-unknown-linux-musl"
+          - runner: macos-14
+            target: "x86_64-apple-darwin"
+          - runner: macos-14
+            target: "aarch64-apple-darwin"
+    steps:
+      - name: "Checkout the project"
+        uses: actions/checkout@v4
+
+      - name: "Install Cross"
+        run: |
+          cargo install cross
+
+      # Linux targets will cross compile on Docker images used by cross
+      - name: "Login to Docker Hub"
+        if: matrix.runner == 'ubuntu-22.04'
+        uses: docker/login-action@v3
+        with:
+          username: ${{secrets.PUBLISH_DOCKERHUB_USERNAME}}
+          password: ${{secrets.PUBLISH_DOCKERHUB_TOKEN}}
+
+      - name: "Build artifact"
+        run: |
+          script/build_artifact "${{matrix.target}}"
+
+      # Temporarily store the build artifact as a GitHub Action artifact to
+      # move it to the next job.
+      - name: "Store build artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{matrix.target}}"
+          path: "release/${{matrix.target}}.tar.gz"
+          retention-days: 1
+          if-no-files-found: error
+
   publish:
     name: "Publish the release"
-    runs-on: macos-14
+    needs:
+      - build
+    runs-on: ubuntu-22.04
     steps:
       - name: "Checkout the project"
         uses: actions/checkout@v4
@@ -39,10 +90,6 @@ jobs:
           touch ~/.ssh/allowed_signers
           echo "$(git config --get user.email) namespaces=\"git\" $(cat $PUBLISH_GIT_SIGN_KEY_PATH.pub)" >> ~/.ssh/allowed_signers
           git config --global user.signingkey "$PUBLISH_GIT_SIGN_KEY_PATH"
-      
-      - name: "Install Cross"
-        run: |
-          cargo install cross
 
       - name: "Login to Docker Hub"
         uses: docker/login-action@v3
@@ -50,7 +97,12 @@ jobs:
           username: ${{secrets.PUBLISH_DOCKERHUB_USERNAME}}
           password: ${{secrets.PUBLISH_DOCKERHUB_TOKEN}}
 
-      - name: "Build artifacts and push release tag"
+      - name: "Fetch build artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+
+      - name: "Push release tag"
         id: version
         working-directory: "./main"
         run: |
@@ -73,6 +125,6 @@ jobs:
             'release/aarch64-unknown-linux-musl.tar.gz#Linux (arm64, musl)' \
             'release/x86_64-apple-darwin.tar.gz#macOS (x86_64)' \
             'release/aarch64-apple-darwin.tar.gz#macOS (arm64)' \
-            'release/install.sh#Installer script'
+            'install.sh#Installer script'
         env:
           GH_TOKEN: ${{github.token}}
