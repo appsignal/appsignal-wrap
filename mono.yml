@@ -1,6 +1,6 @@
 ---
 language: "custom"
-repo: "https://github.com/appsignal/appsignal-wrap"
+repo: "https://github.com/appsignal/appsignal-run"
 build:
   command: "echo 'Can only build from GitHub Actions'"
 publish:

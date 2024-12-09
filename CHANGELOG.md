@@ -1,4 +1,4 @@
-# `appsignal-wrap` changelog
+# `appsignal-run` changelog
 
 ## 0.2.1
 
