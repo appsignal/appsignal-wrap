@@ -1,5 +1,5 @@
 [package]
-name = "appsignal-run"
+name = "appsignal-wrap"
 version = "0.2.2"
 edition = "2021"
 

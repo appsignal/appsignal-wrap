@@ -3,12 +3,12 @@
 set -eu
 
 if ! command -v curl >/dev/null; then
-  echo "Error: \`curl\` is required to download the \`appsignal-run\` binary"
+  echo "Error: \`curl\` is required to download the \`appsignal-wrap\` binary"
   exit 1
 fi
 
 if ! command -v tar >/dev/null; then
-  echo "Error: \`tar\` is required to extract the \`appsignal-run\` binary"
+  echo "Error: \`tar\` is required to extract the \`appsignal-wrap\` binary"
   exit 1
 fi
 
@@ -84,15 +84,15 @@ else
 fi
 
 if [ "$VERSION" = "latest" ]; then
-  URL="https://github.com/appsignal/appsignal-run/releases/latest/download/$TRIPLE.tar.gz"
+  URL="https://github.com/appsignal/appsignal-wrap/releases/latest/download/$TRIPLE.tar.gz"
   VERSION_FRIENDLY="latest version"
 else
-  URL="https://github.com/appsignal/appsignal-run/releases/download/v$VERSION/$TRIPLE.tar.gz"
+  URL="https://github.com/appsignal/appsignal-wrap/releases/download/v$VERSION/$TRIPLE.tar.gz"
   VERSION_FRIENDLY="version $VERSION"
 fi
 
-echo "Downloading $VERSION_FRIENDLY of the \`appsignal-run\` binary for $TRIPLE_FRIENDLY..."
+echo "Downloading $VERSION_FRIENDLY of the \`appsignal-wrap\` binary for $TRIPLE_FRIENDLY..."
 
 curl --progress-bar -SL "$URL" | tar -C "$INSTALL_FOLDER" -xz
 
-echo "Done! Installed \`appsignal-run\` binary at \`$INSTALL_FOLDER/appsignal-run\`."
+echo "Done! Installed \`appsignal-wrap\` binary at \`$INSTALL_FOLDER/appsignal-wrap\`."
