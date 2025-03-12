@@ -95,4 +95,10 @@ echo "Downloading $VERSION_FRIENDLY of the \`appsignal-wrap\` binary for $TRIPLE
 
 curl --progress-bar -SL "$URL" | tar -C "$INSTALL_FOLDER" -xz
 
+# Remove the old `appsignal-run` binary or symlink if it exists.
+rm -f "$INSTALL_FOLDER/appsignal-run" || true
+# Create a new `appsignal-run` symlink to the `appsignal-wrap` binary.
+# This is done to maintain backwards compatibility with the previous name.
+ln -s "$INSTALL_FOLDER/appsignal-wrap" "$INSTALL_FOLDER/appsignal-run"
+
 echo "Done! Installed \`appsignal-wrap\` binary at \`$INSTALL_FOLDER/appsignal-wrap\`."
