@@ -1,4 +1,4 @@
-# `appsignal-run` changelog
+# `appsignal-wrap` changelog
 
 ## 0.2.2
 
@@ -6,7 +6,7 @@ _Published on 2024-12-09._
 
 ### Changed
 
-- Rename the project to `appsignal-run`. (patch [743f35e](https://github.com/appsignal/appsignal-run/commit/743f35e9479c911432adc921eeacfeeddd0815f6))
+- Rename the project to `appsignal-run`. (patch [743f35e](https://github.com/appsignal/appsignal-wrap/commit/743f35e9479c911432adc921eeacfeeddd0815f6))
 
 ## 0.2.1
 
