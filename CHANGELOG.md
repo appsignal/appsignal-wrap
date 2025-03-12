@@ -1,5 +1,13 @@
 # `appsignal-wrap` changelog
 
+## 0.3.0
+
+_Published on 2025-03-12._
+
+### Changed
+
+- Rename the application to `appsignal-wrap`. A symlink to the previous `appsignal-run` name is created during installation. (minor [3a31014](https://github.com/appsignal/appsignal-wrap/commit/3a31014b727af426e0eb63b7a5e6eb95dae2c285))
+
 ## 0.2.2
 
 _Published on 2024-12-09._
