@@ -192,6 +192,7 @@ pub struct Cli {
     hostname: String,
 
     /// The digest to uniquely identify this invocation of the process.
+    ///
     /// Used in cron check-ins as a digest, in logs as an attribute, and in
     /// errors as a tag.
     /// Unless overriden, this value is automatically set to a random value.
@@ -202,6 +203,15 @@ pub struct Cli {
       hide_default_value = true
     )]
     digest: String,
+
+    /// The revision of the application to report.
+    ///
+    /// This will be used as the revision when sending errors, grouping errors
+    /// by the deployment of the application that produced them.
+    /// It will also be used in logs as a tag.
+    /// If not set, no revision will be sent.
+    #[arg(long, env = "APPSIGNAL_REVISION", value_name = "REVISION")]
+    revision: Option<String>,
 }
 
 pub fn hostname() -> String {
@@ -349,6 +359,7 @@ impl Cli {
         let group = self.log.as_ref().unwrap_or(&self.name).clone();
         let hostname = self.hostname.clone();
         let digest = self.digest.clone();
+        let revision = self.revision.clone();
         let command = self.command_as_str();
 
         LogConfig {
@@ -358,6 +369,7 @@ impl Cli {
             hostname,
             group,
             digest,
+            revision,
             command,
         }
     }
@@ -372,6 +384,7 @@ impl Cli {
         let action = self.error.as_ref().unwrap_or(&self.name).clone();
         let hostname = self.hostname.clone();
         let digest = self.digest.clone();
+        let revision = self.revision.clone();
         let command = self.command_as_str();
 
         Some(ErrorConfig {
@@ -380,6 +393,7 @@ impl Cli {
             action,
             hostname,
             digest,
+            revision,
             command,
         })
     }
