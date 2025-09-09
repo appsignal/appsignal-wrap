@@ -16,6 +16,7 @@ pub struct ErrorConfig {
     pub action: String,
     pub hostname: String,
     pub digest: String,
+    pub revision: Option<String>,
     pub command: String,
 }
 
@@ -64,6 +65,7 @@ pub struct ErrorBody {
     pub action: String,
     pub namespace: String,
     pub error: ErrorBodyError,
+    pub revision: Option<String>,
     pub tags: BTreeMap<String, String>,
 }
 
@@ -81,6 +83,7 @@ impl ErrorBody {
             action: config.action.clone(),
             namespace: NAMESPACE.to_string(),
             error,
+            revision: config.revision.clone(),
             tags: tags.into_iter().chain(config.tags()).collect(),
         }
     }
@@ -179,6 +182,7 @@ mod tests {
             hostname: "some-hostname".to_string(),
             digest: "some-digest".to_string(),
             action: "some-action".to_string(),
+            revision: Some("some-revision".to_string()),
             command: "some-command".to_string(),
         }
     }
@@ -214,6 +218,7 @@ mod tests {
                     r#""name":"StartError","#,
                     r#""message":"[Error starting process: No such file or directory (os error 2)]""#,
                     r#"}},"#,
+                    r#""revision":"some-revision","#,
                     r#""tags":{{"#,
                     r#""{}-digest":"some-digest","#,
                     r#""command":"some-command","#,
@@ -260,6 +265,7 @@ mod tests {
                     r#""name":"NonZeroExit","#,
                     r#""message":"line 1\nline 2\n[Process exited with code 42]""#,
                     r#"}},"#,
+                    r#""revision":"some-revision","#,
                     r#""tags":{{"#,
                     r#""{}-digest":"some-digest","#,
                     r#""command":"some-command","#,

@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: rustup component add clippy rustfmt
       - run: cargo build --verbose
       - run: cargo test --verbose
       - run: cargo clippy --verbose --tests --all-targets --all-features -- -D warnings

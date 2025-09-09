@@ -14,6 +14,7 @@ pub struct LogConfig {
     pub group: String,
     pub origin: LogOrigin,
     pub digest: String,
+    pub revision: Option<String>,
     pub command: String,
 }
 
@@ -31,10 +32,13 @@ impl LogConfig {
 
     fn tags(&self) -> BTreeMap<String, String> {
         [
-            (format!("{}-digest", NAME), self.digest.clone()),
-            ("command".to_string(), self.command.clone()),
+            (format!("{}-digest", NAME), Some(self.digest.clone())),
+            ("revision".to_string(), self.revision.clone()),
+            ("command".to_string(), Some(self.command.clone())),
         ]
-        .into()
+        .into_iter()
+        .filter_map(|(key, value)| value.map(|value| (key, value)))
+        .collect()
     }
 }
 
@@ -118,6 +122,7 @@ mod tests {
             group: "some-group".to_string(),
             origin: LogOrigin::All,
             digest: "some-digest".to_string(),
+            revision: Some("some-revision".to_string()),
             command: "some-command".to_string(),
         }
     }
@@ -161,7 +166,8 @@ mod tests {
                     r#""hostname":"some-hostname","#,
                     r#""attributes":{{"#,
                     r#""{}-digest":"some-digest","#,
-                    r#""command":"some-command""#,
+                    r#""command":"some-command","#,
+                    r#""revision":"some-revision""#,
                     r#"}}"#,
                     "}}\n",
                     "{{",
@@ -172,7 +178,8 @@ mod tests {
                     r#""hostname":"some-hostname","#,
                     r#""attributes":{{"#,
                     r#""{}-digest":"some-digest","#,
-                    r#""command":"some-command""#,
+                    r#""command":"some-command","#,
+                    r#""revision":"some-revision""#,
                     r#"}}"#,
                     "}}\n"
                 ),
