@@ -1,5 +1,17 @@
 # `appsignal-wrap` changelog
 
+## 0.3.1
+
+_Published on 2026-02-17._
+
+### Added
+
+- Add `--revision` command-line argument. When a revision is given using the `--revision` flag or the `APPSIGNAL_REVISION` environment variable, errors will use that revision, causing them to be grouped in AppSignal with the deployment for that revision.
+
+  The revision value will also be added as an attribute to log lines, allowing them to be filtered by revision.
+
+  (patch [62db865](https://github.com/appsignal/appsignal-wrap/commit/62db86592f119fca40e6a712cbef28e83e797d66))
+
 ## 0.3.0
 
 _Published on 2025-03-12._
