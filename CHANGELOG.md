@@ -1,5 +1,13 @@
 # `appsignal-wrap` changelog
 
+## 0.3.2
+
+_Published on 2026-03-20._
+
+### Fixed
+
+- Fix exit with parent on macOS. Previously, when the parent process was terminated by a signal which could not be caught, such as `SIGSTOP` or `SIGKILL`, the child process was not terminated on macOS. (patch [1163d61](https://github.com/appsignal/appsignal-wrap/commit/1163d615d8a1414229c78b770452032d13470974))
+
 ## 0.3.1
 
 _Published on 2026-02-17._
