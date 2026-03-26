@@ -91,9 +91,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "appsignal-wrap"
-version = "0.3.1"
+name = "appsignal-transmitter"
+version = "0.1.0"
+source = "git+https://github.com/appsignal/appsignal-transmitter.git#2a53bbd14ac86eb22815112a957b57f64561201e"
 dependencies = [
+ "reqwest",
+]
+
+[[package]]
+name = "appsignal-wrap"
+version = "0.3.2"
+dependencies = [
+ "appsignal-transmitter",
  "chrono",
  "clap",
  "env_logger",
@@ -102,7 +111,6 @@ dependencies = [
  "log",
  "nix",
  "rand",
- "reqwest",
  "serde",
  "serde_json",
  "tokio",

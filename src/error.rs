@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
 
-use reqwest::Body;
+use appsignal_transmitter::reqwest::Body;
 use serde::Serialize;
 
 use crate::client::client;
@@ -21,7 +21,11 @@ pub struct ErrorConfig {
 }
 
 impl ErrorConfig {
-    pub fn request(&self, body: impl Into<Body>) -> Result<reqwest::Request, reqwest::Error> {
+    pub fn request(
+        &self,
+        body: impl Into<Body>,
+    ) -> Result<appsignal_transmitter::reqwest::Request, appsignal_transmitter::reqwest::Error>
+    {
         let url = format!("{}/errors", self.endpoint);
 
         client()
@@ -36,7 +40,8 @@ impl ErrorConfig {
         &self,
         timestamp: &mut impl Timestamp,
         error: &std::io::Error,
-    ) -> Result<reqwest::Request, reqwest::Error> {
+    ) -> Result<appsignal_transmitter::reqwest::Request, appsignal_transmitter::reqwest::Error>
+    {
         self.request(ErrorBody::from_spawn(self, timestamp, error))
     }
 
@@ -45,7 +50,8 @@ impl ErrorConfig {
         timestamp: &mut impl Timestamp,
         exit: &ExitStatus,
         lines: impl IntoIterator<Item = String>,
-    ) -> Result<reqwest::Request, reqwest::Error> {
+    ) -> Result<appsignal_transmitter::reqwest::Request, appsignal_transmitter::reqwest::Error>
+    {
         self.request(ErrorBody::from_exit(self, timestamp, exit, lines))
     }
 

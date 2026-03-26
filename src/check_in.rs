@@ -1,6 +1,6 @@
 use crate::client::client;
 use crate::timestamp::Timestamp;
-use reqwest::Request;
+use appsignal_transmitter::reqwest::Request;
 use serde::Serialize;
 
 pub struct CheckInConfig {
@@ -67,7 +67,7 @@ impl CronConfig {
         &self,
         timestamp: &mut impl Timestamp,
         kind: CronKind,
-    ) -> Result<Request, reqwest::Error> {
+    ) -> Result<Request, appsignal_transmitter::reqwest::Error> {
         let url = format!("{}/check_ins/cron", self.check_in.endpoint);
 
         client()
@@ -82,7 +82,10 @@ pub struct HeartbeatConfig {
 }
 
 impl HeartbeatConfig {
-    pub fn request(&self, timestamp: &mut impl Timestamp) -> Result<Request, reqwest::Error> {
+    pub fn request(
+        &self,
+        timestamp: &mut impl Timestamp,
+    ) -> Result<Request, appsignal_transmitter::reqwest::Error> {
         let url = format!("{}/check_ins/heartbeats", self.check_in.endpoint);
 
         client()

@@ -1,4 +1,4 @@
-use reqwest::{Client, ClientBuilder};
+use appsignal_transmitter::reqwest::{Client, ClientBuilder};
 
 use ::log::{debug, trace};
 
@@ -11,7 +11,9 @@ pub fn client() -> Client {
         .unwrap()
 }
 
-pub async fn send_request(request: Result<reqwest::Request, reqwest::Error>) {
+pub async fn send_request(
+    request: Result<appsignal_transmitter::reqwest::Request, appsignal_transmitter::reqwest::Error>,
+) {
     let request = match request {
         Ok(request) => request,
         Err(err) => {

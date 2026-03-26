@@ -19,7 +19,11 @@ pub struct LogConfig {
 }
 
 impl LogConfig {
-    pub fn request(&self, messages: Vec<LogMessage>) -> Result<reqwest::Request, reqwest::Error> {
+    pub fn request(
+        &self,
+        messages: Vec<LogMessage>,
+    ) -> Result<appsignal_transmitter::reqwest::Request, appsignal_transmitter::reqwest::Error>
+    {
         let url = format!("{}/logs/json", self.endpoint);
 
         client()
