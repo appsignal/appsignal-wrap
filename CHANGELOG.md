@@ -1,5 +1,13 @@
 # `appsignal-wrap` changelog
 
+## 0.3.3
+
+_Published on 2026-10-22._
+
+### Security
+
+- Stop trusting certificates issued under the eMudhra intermediate certificate authorities whose private keys were [compromised in October 2026](https://bugzilla.mozilla.org/show_bug.cgi?id=2083449). The bundled CA certificates no longer include the emSign ECC Root CA - G3 and AAA Certificate Services root certificates, which those intermediates chain to. (patch [1a14497](https://github.com/appsignal/appsignal-wrap/commit/1a144971d29a66fb7d81e7d386d3e2baffa34584))
+
 ## 0.3.2
 
 _Published on 2026-03-20._
