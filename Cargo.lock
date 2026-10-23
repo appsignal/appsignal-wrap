@@ -92,7 +92,7 @@ dependencies = [
 
 [[package]]
 name = "appsignal-wrap"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "chrono",
  "clap",
@@ -886,9 +886,9 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustls"
-version = "0.23.14"
+version = "0.23.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "415d9944693cb90382053259f89fbb077ea730ad7273047ec63b19bc9b160ba8"
+checksum = "47796c98c480fce5406ef69d1c76378375492c3b0a0de587be0c1d9feb12f395"
 dependencies = [
  "once_cell",
  "ring",
