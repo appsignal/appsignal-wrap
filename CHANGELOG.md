@@ -1,5 +1,13 @@
 # `appsignal-wrap` changelog
 
+## 0.3.4
+
+_Published on 2026-10-23._
+
+### Security
+
+- Reject certificates issued under the eMudhra intermediate certificate authorities whose private keys were [compromised in October 2026](https://bugzilla.mozilla.org/show_bug.cgi?id=2083449), in addition to no longer trusting the root certificates they chain to. (patch [f40eb68](https://github.com/appsignal/appsignal-wrap/commit/f40eb682ba23aa4d3ef5bfa461dba101d7f53916))
+
 ## 0.3.3
 
 _Published on 2026-10-22._
